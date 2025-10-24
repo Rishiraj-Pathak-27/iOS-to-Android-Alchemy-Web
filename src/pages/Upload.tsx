@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
+import { supabase } from "@/integrations/supabase/client";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -66,7 +67,7 @@ const Upload = () => {
       
       // Apply iOS-like enhancements using canvas
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         if (canvasRef.current) {
           const canvas = canvasRef.current;
           const ctx = canvas.getContext("2d");
@@ -75,43 +76,61 @@ const Upload = () => {
             canvas.height = img.height;
             ctx.drawImage(img, 0, 0);
             
-            // Apply iOS-like enhancements
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
+            // iOS-like enhancement algorithm
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imgData.data;
             
-            // Enhanced processing for better quality
+            // Step 1: Enhanced contrast (moderate)
+            const contrastFactor = 1.18;
             for (let i = 0; i < data.length; i += 4) {
-              // Increase contrast
-              const factor = 1.25;
-              data[i] = ((data[i] - 128) * factor) + 128;
-              data[i + 1] = ((data[i + 1] - 128) * factor) + 128;
-              data[i + 2] = ((data[i + 2] - 128) * factor) + 128;
-              
-              // Boost saturation
+              data[i] = ((data[i] - 128) * contrastFactor) + 128;
+              data[i + 1] = ((data[i + 1] - 128) * contrastFactor) + 128;
+              data[i + 2] = ((data[i + 2] - 128) * contrastFactor) + 128;
+            }
+            
+            // Step 2: Natural saturation boost (subtle)
+            for (let i = 0; i < data.length; i += 4) {
               const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-              const saturationFactor = 1.2;
+              const saturationFactor = 1.12;
               data[i] = avg + (data[i] - avg) * saturationFactor;
               data[i + 1] = avg + (data[i + 1] - avg) * saturationFactor;
               data[i + 2] = avg + (data[i + 2] - avg) * saturationFactor;
-              
-              // Warm tone adjustment (iOS-like)
-              data[i] = Math.min(255, data[i] * 1.05); // Red
-              data[i + 2] = Math.max(0, data[i + 2] * 0.95); // Blue
-              
-              // Clamp values
+            }
+            
+            // Step 3: iOS cool tone adjustment (cooler, more natural)
+            for (let i = 0; i < data.length; i += 4) {
+              data[i] = data[i] * 0.98; // Slightly reduce red
+              data[i + 2] = Math.min(255, data[i + 2] * 1.03); // Slightly boost blue
+            }
+            
+            // Step 4: Clamp values
+            for (let i = 0; i < data.length; i += 4) {
               data[i] = Math.max(0, Math.min(255, data[i]));
               data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
               data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
             }
             
-            ctx.putImageData(imageData, 0, 0);
+            ctx.putImageData(imgData, 0, 0);
             
-            // Apply slight sharpening
-            ctx.filter = "contrast(1.1) saturate(1.15) brightness(1.05)";
+            // Step 5: Apply subtle sharpening and clarity
+            ctx.filter = "contrast(1.08) saturate(1.1) brightness(1.02)";
             ctx.drawImage(canvas, 0, 0);
+            ctx.filter = "none";
             
             const enhanced = canvas.toDataURL("image/jpeg", 0.95);
             setEnhancedImage(enhanced);
+            
+            // Save to gallery database
+            try {
+              await supabase.from("gallery").insert({
+                original_image_url: imageData,
+                enhanced_image_url: enhanced,
+                metadata: { source: "manual_upload" }
+              });
+            } catch (dbError) {
+              console.error("Failed to save to gallery:", dbError);
+            }
+            
             toast.success("Enhancement complete!");
           }
         }

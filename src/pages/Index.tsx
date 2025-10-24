@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Camera, Upload, Sparkles, ArrowRight } from "lucide-react";
+import { Camera, Upload, Sparkles, ArrowRight, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
@@ -69,7 +69,7 @@ const Index = () => {
         </div>
 
         {/* Features */}
-        <div className="glass p-6 rounded-2xl">
+        <div className="glass p-6 rounded-2xl mb-6">
           <div className="grid grid-cols-3 gap-6 text-center">
             <div>
               <div className="text-3xl font-bold text-primary mb-1">AI</div>
@@ -84,6 +84,19 @@ const Index = () => {
               <div className="text-sm text-muted-foreground">Quality</div>
             </div>
           </div>
+        </div>
+
+        {/* Gallery Button */}
+        <div className="text-center">
+          <Button
+            size="lg"
+            onClick={() => navigate("/gallery")}
+            variant="outline"
+            className="w-full max-w-md h-16 text-lg"
+          >
+            <ImageIcon className="w-6 h-6 mr-3" />
+            View Gallery
+          </Button>
         </div>
       </div>
     </div>
