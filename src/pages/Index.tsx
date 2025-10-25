@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Camera, Upload, Sparkles, ArrowRight, ImageIcon } from "lucide-react";
+import { Upload, Sparkles, Camera, ArrowRight, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+
 
 const Index = () => {
   const navigate = useNavigate();
@@ -22,10 +22,10 @@ const Index = () => {
             <span className="text-sm font-medium text-muted-foreground">AI-Powered Enhancement</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-bold mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent leading-tight">
-            iOS Alchemy
+            iOS to Android Alchemy
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-            Transform your Android photos into stunning iOS-quality images using advanced AI enhancement
+            Capture & Transform your Android photos into stunning iOS-quality images using advanced AI enhancement
           </p>
         </div>
 

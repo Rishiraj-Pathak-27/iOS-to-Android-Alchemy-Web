@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
-import { supabase } from "@/integrations/supabase/client";
+import { galleryStorage } from "@/lib/galleryStorage";
 
 const Capture = () => {
   const navigate = useNavigate();
@@ -159,15 +159,15 @@ const Capture = () => {
             link.download = `enhanced_${Date.now()}.jpg`;
             link.click();
             
-            // Save to gallery database
+            // Save to gallery using localStorage
             try {
-              await supabase.from("gallery").insert({
+              galleryStorage.add({
                 original_image_url: imageData,
                 enhanced_image_url: enhanced,
                 metadata: { source: "camera_capture" }
               });
-            } catch (dbError) {
-              console.error("Failed to save to gallery:", dbError);
+            } catch (storageError) {
+              console.error("Failed to save to gallery:", storageError);
             }
             
             toast.success("Enhancement complete and saved!");
@@ -226,7 +226,7 @@ const Capture = () => {
         {!capturedImage && !enhancedImage ? (
           // Camera View
           <div className="glass rounded-3xl overflow-hidden shadow-2xl">
-            <div className="relative aspect-[4/3] bg-black">
+            <div className="relative aspect-[4/3] bg-white">
               <video
                 ref={videoRef}
                 autoPlay

@@ -8,7 +8,7 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 240 20% 99%;
+    --background: 0 0% 100%;
     --foreground: 240 10% 15%;
 
     --card: 0 0% 100%;
@@ -24,7 +24,7 @@ All colors MUST be HSL.
     --secondary: 263 70% 50%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 240 5% 96%;
+    --muted: 240 5% 98%;
     --muted-foreground: 240 4% 46%;
 
     --accent: 280 80% 60%;
@@ -33,20 +33,20 @@ All colors MUST be HSL.
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 10% 90%;
-    --input: 240 10% 90%;
+    --border: 240 10% 92%;
+    --input: 240 10% 95%;
     --ring: 221 83% 53%;
 
     --radius: 1rem;
 
     /* iOS-inspired gradients */
     --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(263 70% 50%));
-    --gradient-soft: linear-gradient(180deg, hsl(240 20% 99%), hsl(240 15% 96%));
+    --gradient-soft: linear-gradient(180deg, hsl(0 0% 100%), hsl(240 15% 98%));
     --gradient-glow: linear-gradient(135deg, hsl(221 83% 68% / 0.2), hsl(263 70% 65% / 0.2));
     
     /* Glass morphism */
-    --glass-bg: hsl(0 0% 100% / 0.7);
-    --glass-border: hsl(240 10% 90% / 0.5);
+    --glass-bg: hsl(0 0% 100% / 0.8);
+    --glass-border: hsl(240 10% 90% / 0.6);
     
     /* Shadows */
     --shadow-soft: 0 4px 20px hsl(221 83% 53% / 0.1);
@@ -67,48 +67,6 @@ All colors MUST be HSL.
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  .dark {
-    --background: 240 10% 10%;
-    --foreground: 240 10% 95%;
-
-    --card: 240 10% 12%;
-    --card-foreground: 240 10% 95%;
-
-    --popover: 240 10% 12%;
-    --popover-foreground: 240 10% 95%;
-
-    --primary: 221 83% 53%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 221 83% 68%;
-
-    --secondary: 263 70% 50%;
-    --secondary-foreground: 0 0% 100%;
-
-    --muted: 240 10% 15%;
-    --muted-foreground: 240 5% 65%;
-
-    --accent: 280 80% 60%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 240 10% 20%;
-    --input: 240 10% 20%;
-    --ring: 221 83% 53%;
-
-    --glass-bg: hsl(240 10% 12% / 0.7);
-    --glass-border: hsl(240 10% 20% / 0.5);
-
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
 }
 
 @layer base {
@@ -118,7 +76,7 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
-    background: linear-gradient(180deg, hsl(var(--background)), hsl(240 15% 96%));
+    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(240 15% 98%));
     min-height: 100vh;
   }
 }
@@ -129,6 +87,7 @@ All colors MUST be HSL.
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   }
   
   .gradient-primary {

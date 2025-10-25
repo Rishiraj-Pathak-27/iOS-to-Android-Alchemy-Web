@@ -51,7 +51,7 @@ const ComparisonSlider = ({ beforeImage, afterImage }: ComparisonSliderProps) =>
       
       <div
         ref={containerRef}
-        className="relative aspect-[4/3] overflow-hidden cursor-ew-resize select-none bg-black"
+        className="relative aspect-[4/3] overflow-hidden cursor-ew-resize select-none bg-white"
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
@@ -62,27 +62,34 @@ const ComparisonSlider = ({ beforeImage, afterImage }: ComparisonSliderProps) =>
         <img
           src={afterImage}
           alt="Enhanced"
-          className="absolute inset-0 w-full h-full object-contain"
+          className="absolute inset-0 w-full h-full object-contain bg-white"
           draggable={false}
+          style={{ imageRendering: 'auto' }}
+          loading="eager"
         />
         
         {/* Before Image (Original) with clip */}
         <div
-          className="absolute inset-0 overflow-hidden"
+          className="absolute inset-0 overflow-hidden backdrop-blur-sm"
           style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
         >
           <img
             src={beforeImage}
             alt="Original"
-            className="absolute inset-0 w-full h-full object-contain"
+            className="absolute inset-0 w-full h-full object-contain bg-white"
             draggable={false}
+            loading="eager"
           />
         </div>
 
         {/* Slider Line */}
         <div
-          className="absolute top-0 bottom-0 w-1 bg-white shadow-2xl cursor-ew-resize"
-          style={{ left: `${sliderPosition}%`, transform: "translateX(-50%)" }}
+          className="absolute top-0 bottom-0 w-0.5 bg-white/80 shadow-lg cursor-ew-resize backdrop-blur-sm"
+          style={{ 
+            left: `${sliderPosition}%`, 
+            transform: "translateX(-50%)",
+            boxShadow: "0 0 15px rgba(255,255,255,0.5)"
+          }}
         >
           {/* Slider Handle */}
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white shadow-2xl flex items-center justify-center">

@@ -1,10 +1,11 @@
-import { useState, useRef } from "react";
-import { Upload as UploadIcon, ArrowLeft, Download, Loader2, ImagePlus } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Upload as UploadIcon, ArrowLeft, Download, Loader2, ImagePlus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
-import { supabase } from "@/integrations/supabase/client";
+import { galleryStorage } from "@/lib/galleryStorage";
+import { imageEnhancer } from "@/lib/ml/imageEnhancer";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -14,22 +15,120 @@ const Upload = () => {
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isModelLoading, setIsModelLoading] = useState(true);
+  const toastRef = useRef<string | null>(null); // For tracking enhancement toast
 
-  const handleFileSelect = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select a valid image file");
-      return;
-    }
+  useEffect(() => {
+    let mounted = true;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageData = e.target?.result as string;
+    // Initialize TensorFlow and warm up the model
+    const initializeEnhancement = async () => {
+      try {
+        // Show loading state
+        toast.info("Initializing image enhancement...");
+        
+        // Warm up the model
+        await imageEnhancer.warmupModel();
+        
+        if (mounted) {
+          setIsModelLoading(false);
+          toast.success("Ready to enhance images!");
+        }
+      } catch (error) {
+        console.error("Error initializing model:", error);
+        if (mounted) {
+          toast.error("Failed to initialize image enhancer. Please refresh the page to try again.");
+          setIsModelLoading(false);
+        }
+      }
+    };
+
+    initializeEnhancement();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleFileSelect = async (file: File) => {
+    try {
+      // Validate file type with more specific message
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please select a valid image file (JPEG, PNG, or WEBP)");
+        return;
+      }
+
+      // Check file size with more user-friendly message
+      const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB to support high-res images
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Please use an image under 25MB`);
+        return;
+      }
+
+      // Clear any existing toast
+      if (toastRef.current) {
+        toast.dismiss(toastRef.current);
+      }
+
+      // Reset state and show loading
+      setOriginalImage(null);
+      setEnhancedImage(null);
+      setIsEnhancing(true);
+      
+      // Create object URL for better performance with large images
+      const objectUrl = URL.createObjectURL(file);
+      
+      // Pre-load image to ensure it's valid and get dimensions
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = objectUrl;
+      });
+
+      // Convert to base64 with proper sizing
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not get canvas context");
+
+      // Maintain aspect ratio while ensuring reasonable file size
+      const MAX_DIMENSION = 3000;
+      let width = img.width;
+      let height = img.height;
+      
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIMENSION) / width);
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round((width * MAX_DIMENSION) / height);
+          height = MAX_DIMENSION;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // High-quality image rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      const imageData = canvas.toDataURL('image/jpeg', 0.95);
+      
+      // Cleanup
+      URL.revokeObjectURL(objectUrl);
+
       setOriginalImage(imageData);
       toast.success("Image loaded successfully!");
+      
       // Auto-enhance
-      enhanceImage(imageData);
-    };
-    reader.readAsDataURL(file);
+      await enhanceImage(imageData);
+    } catch (error) {
+      console.error("Error handling file:", error);
+      toast.error("Failed to process image. Please try again.");
+      reset();
+    }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,107 +157,177 @@ const Upload = () => {
   };
 
   const enhanceImage = async (imageData: string) => {
+    if (!imageData) {
+      toast.error("No image data available");
+      return;
+    }
+
+    if (isModelLoading) {
+      toast.error("ML model is still loading. Please wait a moment and try again.");
+      return;
+    }
+    
     setIsEnhancing(true);
+    setEnhancedImage(null);
+
+    const enhancementToast = toast.loading("Preparing image for enhancement...");
+
     try {
-      toast.info("Enhancing image with AI...");
+      // Create a promise wrapper for image loading with timeout
+      const loadImageData = new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        
+        const timeout = setTimeout(() => {
+          reject(new Error("Image loading timed out"));
+        }, 30000); // 30 second timeout
+        
+        img.onload = () => {
+          clearTimeout(timeout);
+          resolve(img);
+        };
+        
+        img.onerror = (e) => {
+          clearTimeout(timeout);
+          reject(new Error("Failed to load image: " + e));
+        };
+        
+        img.src = imageData;
+      });
+
+      toast.loading("Loading image...", { id: enhancementToast });
+      const img = await loadImageData;
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!canvasRef.current) {
+        throw new Error("Canvas reference not available");
+      }
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Could not get canvas context");
+      }
+
+      // Set canvas dimensions to maintain aspect ratio while fitting within max dimensions
+      const maxDim = 1024; // Maximum dimension for processing
+      let width = img.width;
+      let height = img.height;
       
-      // Apply iOS-like enhancements using canvas
-      const img = new Image();
-      img.onload = async () => {
-        if (canvasRef.current) {
-          const canvas = canvasRef.current;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-            
-            // iOS-like enhancement algorithm
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imgData.data;
-            
-            // Step 1: Enhanced contrast (moderate)
-            const contrastFactor = 1.18;
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = ((data[i] - 128) * contrastFactor) + 128;
-              data[i + 1] = ((data[i + 1] - 128) * contrastFactor) + 128;
-              data[i + 2] = ((data[i + 2] - 128) * contrastFactor) + 128;
-            }
-            
-            // Step 2: Natural saturation boost (subtle)
-            for (let i = 0; i < data.length; i += 4) {
-              const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-              const saturationFactor = 1.12;
-              data[i] = avg + (data[i] - avg) * saturationFactor;
-              data[i + 1] = avg + (data[i + 1] - avg) * saturationFactor;
-              data[i + 2] = avg + (data[i + 2] - avg) * saturationFactor;
-            }
-            
-            // Step 3: iOS cool tone adjustment (cooler, more natural)
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = data[i] * 0.98; // Slightly reduce red
-              data[i + 2] = Math.min(255, data[i + 2] * 1.03); // Slightly boost blue
-            }
-            
-            // Step 4: Clamp values
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = Math.max(0, Math.min(255, data[i]));
-              data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
-              data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
-            }
-            
-            ctx.putImageData(imgData, 0, 0);
-            
-            // Step 5: Apply subtle sharpening and clarity
-            ctx.filter = "contrast(1.08) saturate(1.1) brightness(1.02)";
-            ctx.drawImage(canvas, 0, 0);
-            ctx.filter = "none";
-            
-            const enhanced = canvas.toDataURL("image/jpeg", 0.95);
-            setEnhancedImage(enhanced);
-            
-            // Save to gallery database
-            try {
-              await supabase.from("gallery").insert({
-                original_image_url: imageData,
-                enhanced_image_url: enhanced,
-                metadata: { source: "manual_upload" }
-              });
-            } catch (dbError) {
-              console.error("Failed to save to gallery:", dbError);
-            }
-            
-            toast.success("Enhancement complete!");
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      // Set canvas to processing dimensions
+      canvas.width = width;
+      canvas.height = height;
+      
+      // Use high-quality image scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Get image data for ML processing
+      const imgData = ctx.getImageData(0, 0, width, height);
+
+      // Update progress
+      toast.loading("Applying AI enhancement...", { id: enhancementToast });
+      
+      // Apply ML enhancement with progress tracking
+      const enhancedData = await imageEnhancer.enhanceImage(imgData, (progress) => {
+        toast.loading(`Enhancing image: ${Math.round(progress * 100)}%`, { 
+          id: enhancementToast 
+        });
+      });
+
+      // Apply the enhanced data back to canvas
+      ctx.putImageData(enhancedData, 0, 0);
+
+      // Get the final enhanced image as base64
+      const enhancedResult = canvas.toDataURL("image/jpeg", 0.95);
+      setEnhancedImage(enhancedResult);
+
+      // Save to gallery using localStorage
+      toast.loading("Saving to gallery...", { id: enhancementToast });
+      try {
+        galleryStorage.add({
+          original_image_url: imageData,
+          enhanced_image_url: enhancedResult,
+          metadata: { 
+            source: "manual_upload", 
+            enhancement: "ml_model",
+            dimensions: {
+              width,
+              height
+            },
+            timestamp: new Date().toISOString()
           }
+        });
+        toast.success("Enhancement complete and saved to gallery!", { 
+          id: enhancementToast 
+        });
+      } catch (storageError) {
+        console.error("Failed to save to gallery:", storageError);
+        toast.warning("Enhancement complete but couldn't save to gallery", { 
+          id: enhancementToast 
+        });
+      }
+        } catch (error) {
+          toast.error("Enhancement failed. Please try again.");
+          console.error("Enhancement error:", error);
+        } finally {
+          setIsEnhancing(false);
         }
       };
-      img.src = imageData;
-    } catch (error) {
-      toast.error("Enhancement failed. Please try again.");
-      console.error("Enhancement error:", error);
-    } finally {
-      setIsEnhancing(false);
-    }
-  };
 
   const downloadEnhanced = () => {
     if (enhancedImage) {
-      const link = document.createElement("a");
-      link.href = enhancedImage;
-      link.download = `enhanced_${Date.now()}.jpg`;
-      link.click();
-      toast.success("Enhanced image downloaded!");
+      try {
+        // Create descriptive filename
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '');
+        const filename = `enhanced_ios_style_${timestamp}.jpg`;
+        
+        // Create and trigger download
+        const link = document.createElement("a");
+        link.href = enhancedImage;
+        link.download = filename;
+        link.click();
+        
+        toast.success("Enhanced image downloaded successfully!", {
+          description: `Saved as ${filename}`
+        });
+      } catch (error) {
+        console.error("Download error:", error);
+        toast.error("Failed to download. Please try again.");
+      }
+    } else {
+      toast.error("No enhanced image available to download");
     }
   };
 
   const reset = () => {
+    // Clear all state
     setOriginalImage(null);
     setEnhancedImage(null);
+    setIsEnhancing(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+
+    // Dismiss any active toasts
+    if (toastRef.current) {
+      toast.dismiss(toastRef.current);
+      toastRef.current = null;
+    }
+
+    // Show ready state
+    if (!isModelLoading) {
+      toast.info("Ready for a new image!");
     }
   };
 

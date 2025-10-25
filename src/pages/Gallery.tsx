@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
-import { supabase } from "@/integrations/supabase/client";
+import { galleryStorage } from "@/lib/galleryStorage";
 
 interface GalleryItem {
   id: string;
@@ -26,13 +26,8 @@ const Gallery = () => {
 
   const loadGallery = async () => {
     try {
-      const { data, error } = await supabase
-        .from("gallery")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setItems(data || []);
+      const data = galleryStorage.getAll();
+      setItems(data);
     } catch (error) {
       console.error("Error loading gallery:", error);
       toast.error("Failed to load gallery");
@@ -43,8 +38,8 @@ const Gallery = () => {
 
   const deleteItem = async (id: string) => {
     try {
-      const { error } = await supabase.from("gallery").delete().eq("id", id);
-      if (error) throw error;
+      const success = galleryStorage.delete(id);
+      if (!success) throw new Error("Delete failed");
       
       setItems(items.filter(item => item.id !== id));
       if (selectedItem?.id === id) setSelectedItem(null);
