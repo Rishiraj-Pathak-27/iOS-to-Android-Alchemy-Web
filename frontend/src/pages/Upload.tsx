@@ -7,6 +7,48 @@ import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
 import { enhanceImageWithRealESRGAN, checkBackendHealth } from "@/lib/services/realEsrganApi";
 
+// Helper function to compress image for storage
+const compressImageForStorage = (base64Image: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      // Scale down for storage (max 1500px to save space)
+      const MAX_STORAGE_SIZE = 1500;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_STORAGE_SIZE || height > MAX_STORAGE_SIZE) {
+        if (width > height) {
+          height = Math.round((height * MAX_STORAGE_SIZE) / width);
+          width = MAX_STORAGE_SIZE;
+        } else {
+          width = Math.round((width * MAX_STORAGE_SIZE) / height);
+          height = MAX_STORAGE_SIZE;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Use lower quality JPEG for storage compression
+      resolve(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = base64Image;
+  });
+};
+
 const Upload = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,8 +208,11 @@ const Upload = () => {
       // Save to gallery using localStorage
       toast.loading("💾 Saving to gallery...", { id: enhancementToast });
       try {
+        // Compress original image for storage
+        const compressedOriginal = await compressImageForStorage(imageData);
+        
         galleryStorage.add({
-          original_image_url: imageData,
+          original_image_url: compressedOriginal,
           enhanced_image_url: enhancedResult,
           metadata: { 
             source: "manual_upload", 
@@ -175,12 +220,15 @@ const Upload = () => {
             timestamp: new Date().toISOString()
           }
         });
-        toast.success("✅ Enhancement complete and saved to gallery!", { 
+        
+        const storageInfo = galleryStorage.getStorageInfo();
+        toast.success(`✅ Saved to gallery! (${storageInfo.count} items, ${storageInfo.estimatedSize} used)`, { 
           id: enhancementToast 
         });
       } catch (storageError) {
         console.error("Failed to save to gallery:", storageError);
-        toast.warning("✅ Enhancement complete but couldn't save to gallery", { 
+        // Don't fail the entire enhancement if gallery save fails
+        toast.warning("✅ Enhancement complete! Gallery save failed due to storage limits", { 
           id: enhancementToast 
         });
       }

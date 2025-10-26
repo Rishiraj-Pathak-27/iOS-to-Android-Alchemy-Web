@@ -54,6 +54,7 @@ def enhance_with_replicate(image_bytes):
 def enhance_with_pil_fallback(image_bytes):
     """
     Fallback enhancement using PIL when APIs are unavailable
+    Provides 2x upscaling with quality improvements
     """
     try:
         logger.info("Using PIL-based fallback enhancement...")
@@ -62,23 +63,39 @@ def enhance_with_pil_fallback(image_bytes):
         img = Image.open(io.BytesIO(image_bytes))
         img = img.convert('RGB')
         
-        # Simple 2x upscaling with enhancement
-        new_size = (img.width * 2, img.height * 2)
+        # Get original dimensions
+        original_width, original_height = img.size
+        logger.info(f"Original dimensions: {original_width}x{original_height}")
+        
+        # Apply 2x upscaling with high-quality resampling
+        new_size = (original_width * 2, original_height * 2)
         img = img.resize(new_size, Image.Resampling.LANCZOS)
         
-        # Enhance
-        from PIL import ImageEnhance
+        # Apply quality enhancements
+        from PIL import ImageEnhance, ImageFilter
+        
+        # Sharpness enhancement
         enhancer = ImageEnhance.Sharpness(img)
         img = enhancer.enhance(2.0)
         
+        # Contrast enhancement
         enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(1.2)
+        img = enhancer.enhance(1.3)
         
-        # Save to bytes
+        # Color vibrancy
+        enhancer = ImageEnhance.Color(img)
+        img = enhancer.enhance(1.1)
+        
+        # Light blur for smoothing
+        img = img.filter(ImageFilter.SMOOTH_MORE)
+        
+        # Save to bytes with high quality compression for gallery storage
         output = io.BytesIO()
-        img.save(output, format='PNG')
-        logger.info("✅ PIL enhancement completed")
-        return output.getvalue()
+        img.save(output, format='PNG', optimize=False)
+        result_bytes = output.getvalue()
+        
+        logger.info(f"✅ PIL enhancement completed: {new_size[0]}x{new_size[1]}")
+        return result_bytes
         
     except Exception as e:
         logger.error(f"PIL fallback error: {e}")
@@ -87,7 +104,7 @@ def enhance_with_pil_fallback(image_bytes):
 
 def enhance_with_huggingface(image_bytes):
     """
-    Enhance image using Hugging Face Inference API
+    Enhance image using Hugging Face Inference API with fallback
     """
     try:
         logger.info("Sending image to Hugging Face Real-ESRGAN model...")
@@ -95,10 +112,14 @@ def enhance_with_huggingface(image_bytes):
         # Use HF Inference API with Qualcomm's Real-ESRGAN x4 model
         api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
         
-        # Try without API token first (public model)
+        # Try with API token if available, otherwise use public access
+        hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
         headers = {
             "Content-Type": "image/png"
         }
+        
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
         
         response = requests.post(
             api_url,
@@ -108,14 +129,17 @@ def enhance_with_huggingface(image_bytes):
         )
         
         if response.status_code == 200:
-            logger.info("✅ Real-ESRGAN enhancement completed")
+            logger.info("✅ Real-ESRGAN enhancement completed via HF API")
             return response.content
+        elif response.status_code == 401:
+            logger.info("⚠️ HF API auth skipped (no token configured), using PIL fallback...")
+            return enhance_with_pil_fallback(image_bytes)
         else:
-            logger.warning(f"HF API returned {response.status_code}, trying fallback...")
+            logger.warning(f"⚠️ HF API returned {response.status_code}, using PIL fallback...")
             return enhance_with_pil_fallback(image_bytes)
             
     except Exception as e:
-        logger.warning(f"HF API error: {e}, using fallback...")
+        logger.warning(f"⚠️ HF API error: {e}, using PIL fallback...")
         return enhance_with_pil_fallback(image_bytes)
 
 
@@ -195,9 +219,15 @@ async def enhance_image(file: UploadFile = File(...)):
             logger.error(f"Enhancement failed: {e}")
             raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")
 
-        # Convert result to base64
+        # Convert result to base64 for storage optimization
         try:
-            enhanced_base64 = base64.b64encode(enhanced_bytes).decode("utf-8")
+            # Convert enhanced image to JPEG for better compression (smaller storage)
+            enhanced_img = Image.open(io.BytesIO(enhanced_bytes))
+            jpeg_buffer = io.BytesIO()
+            enhanced_img.save(jpeg_buffer, format='JPEG', quality=92, optimize=True)
+            jpeg_bytes = jpeg_buffer.getvalue()
+            
+            enhanced_base64 = base64.b64encode(jpeg_bytes).decode("utf-8")
         except Exception as e:
             logger.error(f"Failed to encode image: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to encode image: {str(e)}")
