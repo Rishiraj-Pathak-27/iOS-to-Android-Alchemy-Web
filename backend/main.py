@@ -14,13 +14,11 @@ import requests
 import os
 from pathlib import Path
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Real-ESRGAN Image Enhancement API", version="1.0.0")
 
-# Add CORS middleware to allow requests from React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,7 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Try multiple Real-ESRGAN inference APIs
 INFERENCE_APIS = [
     "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus",
     "https://api-inference.huggingface.co/models/ai-forever/Real-ESRGAN",
@@ -43,8 +40,6 @@ def enhance_with_replicate(image_bytes):
     try:
         logger.info("Sending image to Replicate Real-ESRGAN model...")
         
-        # For now, use a simple PIL enhancement as fallback
-        # (Replicate would require an API token)
         return None
     except Exception as e:
         logger.error(f"Error with Replicate API: {e}")
@@ -59,37 +54,28 @@ def enhance_with_pil_fallback(image_bytes):
     try:
         logger.info("Using PIL-based fallback enhancement...")
         
-        # Open image
         img = Image.open(io.BytesIO(image_bytes))
         img = img.convert('RGB')
         
-        # Get original dimensions
         original_width, original_height = img.size
         logger.info(f"Original dimensions: {original_width}x{original_height}")
         
-        # Apply 2x upscaling with high-quality resampling
         new_size = (original_width * 2, original_height * 2)
         img = img.resize(new_size, Image.Resampling.LANCZOS)
         
-        # Apply quality enhancements
         from PIL import ImageEnhance, ImageFilter
         
-        # Sharpness enhancement
         enhancer = ImageEnhance.Sharpness(img)
         img = enhancer.enhance(2.0)
         
-        # Contrast enhancement
         enhancer = ImageEnhance.Contrast(img)
         img = enhancer.enhance(1.3)
         
-        # Color vibrancy
         enhancer = ImageEnhance.Color(img)
         img = enhancer.enhance(1.1)
         
-        # Light blur for smoothing
         img = img.filter(ImageFilter.SMOOTH_MORE)
         
-        # Save to bytes with high quality compression for gallery storage
         output = io.BytesIO()
         img.save(output, format='PNG', optimize=False)
         result_bytes = output.getvalue()
@@ -109,10 +95,8 @@ def enhance_with_huggingface(image_bytes):
     try:
         logger.info("Sending image to Hugging Face Real-ESRGAN model...")
         
-        # Use HF Inference API with Qualcomm's Real-ESRGAN x4 model
         api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
         
-        # Try with API token if available, otherwise use public access
         hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
         headers = {
             "Content-Type": "image/png"
@@ -181,17 +165,14 @@ async def enhance_image(file: UploadFile = File(...)):
         Enhanced image as base64 string
     """
     try:
-        # Check file type
-        if not file.content_type or not file.content_type.startswith("image/"):
+        if file.content_type is None or not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
 
-        # Read file contents
         contents = await file.read()
         
         if not contents:
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-        # Validate image
         try:
             img = Image.open(io.BytesIO(contents))
             img = img.convert('RGB')
@@ -200,12 +181,10 @@ async def enhance_image(file: UploadFile = File(...)):
             logger.error(f"Failed to open image: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
-        # Convert to PNG bytes for API
         png_buffer = io.BytesIO()
         img.save(png_buffer, format='PNG')
         png_bytes = png_buffer.getvalue()
 
-        # Enhance with Real-ESRGAN (with fallback)
         try:
             enhanced_bytes = enhance_with_huggingface(png_bytes)
             
@@ -219,9 +198,7 @@ async def enhance_image(file: UploadFile = File(...)):
             logger.error(f"Enhancement failed: {e}")
             raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")
 
-        # Convert result to base64 for storage optimization
         try:
-            # Convert enhanced image to JPEG for better compression (smaller storage)
             enhanced_img = Image.open(io.BytesIO(enhanced_bytes))
             jpeg_buffer = io.BytesIO()
             enhanced_img.save(jpeg_buffer, format='JPEG', quality=92, optimize=True)
