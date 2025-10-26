@@ -222,13 +222,15 @@ const Upload = () => {
         });
         
         const storageInfo = galleryStorage.getStorageInfo();
-        toast.success(`✅ Saved to gallery! (${storageInfo.count} items, ${storageInfo.estimatedSize} used)`, { 
-          id: enhancementToast 
-        });
+        toast.success(
+          `✅ Saved to gallery! (${storageInfo.count} items, ${storageInfo.estimatedSize}/${storageInfo.maxSize} used)`, 
+          { id: enhancementToast }
+        );
       } catch (storageError) {
         console.error("Failed to save to gallery:", storageError);
+        const message = storageError instanceof Error ? storageError.message : "Gallery save failed due to storage limits";
         // Don't fail the entire enhancement if gallery save fails
-        toast.warning("✅ Enhancement complete! Gallery save failed due to storage limits", { 
+        toast.warning(`✅ Enhancement complete! ⚠️ ${message}`, { 
           id: enhancementToast 
         });
       }
