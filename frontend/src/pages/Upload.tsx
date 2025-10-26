@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload as UploadIcon, ArrowLeft, Download, Loader2, ImagePlus, RefreshCw } from "lucide-react";
+import { Upload as UploadIcon, ArrowLeft, Download, Loader2, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
-import { imageEnhancer } from "@/lib/ml/imageEnhancer";
+import { enhanceImageWithRealESRGAN, checkBackendHealth } from "@/lib/services/realEsrganApi";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -15,39 +15,20 @@ const Upload = () => {
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isModelLoading, setIsModelLoading] = useState(true);
   const toastRef = useRef<string | null>(null); // For tracking enhancement toast
 
   useEffect(() => {
-    let mounted = true;
-
-    // Initialize TensorFlow and warm up the model
-    const initializeEnhancement = async () => {
-      try {
-        // Show loading state
-        toast.info("Initializing image enhancement...");
-        
-        // Warm up the model
-        await imageEnhancer.warmupModel();
-        
-        if (mounted) {
-          setIsModelLoading(false);
-          toast.success("Ready to enhance images!");
-        }
-      } catch (error) {
-        console.error("Error initializing model:", error);
-        if (mounted) {
-          toast.error("Failed to initialize image enhancer. Please refresh the page to try again.");
-          setIsModelLoading(false);
-        }
+    // Check if backend is available
+    const checkBackend = async () => {
+      const isHealthy = await checkBackendHealth();
+      if (isHealthy) {
+        toast.success("✅ Real-ESRGAN enhancement ready!");
+      } else {
+        toast.error("⚠️ Backend not available. Please start the backend server.");
       }
     };
 
-    initializeEnhancement();
-
-    return () => {
-      mounted = false;
-    };
+    checkBackend();
   }, []);
 
   const handleFileSelect = async (file: File) => {
@@ -161,129 +142,56 @@ const Upload = () => {
       toast.error("No image data available");
       return;
     }
-
-    if (isModelLoading) {
-      toast.error("ML model is still loading. Please wait a moment and try again.");
-      return;
-    }
     
     setIsEnhancing(true);
     setEnhancedImage(null);
 
-    const enhancementToast = toast.loading("Preparing image for enhancement...");
+    const enhancementToast = toast.loading("🚀 Enhancing with Real-ESRGAN...");
 
     try {
-      // Create a promise wrapper for image loading with timeout
-      const loadImageData = new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        
-        const timeout = setTimeout(() => {
-          reject(new Error("Image loading timed out"));
-        }, 30000); // 30 second timeout
-        
-        img.onload = () => {
-          clearTimeout(timeout);
-          resolve(img);
-        };
-        
-        img.onerror = (e) => {
-          clearTimeout(timeout);
-          reject(new Error("Failed to load image: " + e));
-        };
-        
-        img.src = imageData;
-      });
+      toast.loading("📤 Sending image to backend...", { id: enhancementToast });
 
-      toast.loading("Loading image...", { id: enhancementToast });
-      const img = await loadImageData;
-      
-      if (!canvasRef.current) {
-        throw new Error("Canvas reference not available");
+      // Call Real-ESRGAN API to enhance the image
+      const result = await enhanceImageWithRealESRGAN(imageData);
+
+      if (!result.success || !result.enhancedImage) {
+        throw new Error(result.error || "Enhancement failed");
       }
 
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        throw new Error("Could not get canvas context");
-      }
+      toast.loading("✨ Processing enhancement...", { id: enhancementToast });
 
-      // Set canvas dimensions to maintain aspect ratio while fitting within max dimensions
-      const maxDim = 1024; // Maximum dimension for processing
-      let width = img.width;
-      let height = img.height;
-      
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-      }
-
-      // Set canvas to processing dimensions
-      canvas.width = width;
-      canvas.height = height;
-      
-      // Use high-quality image scaling
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, width, height);
-
-      // Get image data for ML processing
-      const imgData = ctx.getImageData(0, 0, width, height);
-
-      // Update progress
-      toast.loading("Applying AI enhancement...", { id: enhancementToast });
-      
-      // Apply ML enhancement with progress tracking
-      const enhancedData = await imageEnhancer.enhanceImage(imgData, (progress) => {
-        toast.loading(`Enhancing image: ${Math.round(progress * 100)}%`, { 
-          id: enhancementToast 
-        });
-      });
-
-      // Apply the enhanced data back to canvas
-      ctx.putImageData(enhancedData, 0, 0);
-
-      // Get the final enhanced image as base64
-      const enhancedResult = canvas.toDataURL("image/jpeg", 0.95);
+      const enhancedResult = result.enhancedImage;
       setEnhancedImage(enhancedResult);
 
       // Save to gallery using localStorage
-      toast.loading("Saving to gallery...", { id: enhancementToast });
+      toast.loading("💾 Saving to gallery...", { id: enhancementToast });
       try {
         galleryStorage.add({
           original_image_url: imageData,
           enhanced_image_url: enhancedResult,
           metadata: { 
             source: "manual_upload", 
-            enhancement: "ml_model",
-            dimensions: {
-              width,
-              height
-            },
+            enhancement: "real_esrgan",
             timestamp: new Date().toISOString()
           }
         });
-        toast.success("Enhancement complete and saved to gallery!", { 
+        toast.success("✅ Enhancement complete and saved to gallery!", { 
           id: enhancementToast 
         });
       } catch (storageError) {
         console.error("Failed to save to gallery:", storageError);
-        toast.warning("Enhancement complete but couldn't save to gallery", { 
+        toast.warning("✅ Enhancement complete but couldn't save to gallery", { 
           id: enhancementToast 
         });
       }
-        } catch (error) {
-          toast.error("Enhancement failed. Please try again.");
-          console.error("Enhancement error:", error);
-        } finally {
-          setIsEnhancing(false);
-        }
-      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Enhancement failed";
+      toast.error(`❌ ${errorMessage}`, { id: enhancementToast });
+      console.error("Enhancement error:", error);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   const downloadEnhanced = () => {
     if (enhancedImage) {
@@ -326,9 +234,7 @@ const Upload = () => {
     }
 
     // Show ready state
-    if (!isModelLoading) {
-      toast.info("Ready for a new image!");
-    }
+    toast.info("Ready for a new image!");
   };
 
   return (

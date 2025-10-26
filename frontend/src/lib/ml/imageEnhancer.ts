@@ -87,7 +87,7 @@ export class ImageEnhancer {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
-        
+          
         // Calculate luminance
         const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
         
