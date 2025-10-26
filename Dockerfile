@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements and app
-COPY backend/requirements.txt .
-COPY backend/main.py .
+COPY backend/requirements.txt ./requirements.txt
+COPY backend/main.py ./main.py
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
