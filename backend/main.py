@@ -1,6 +1,7 @@
 """
 Real-ESRGAN Image Enhancement Backend
 Using Real-ESRGAN model from Hugging Face for professional image upscaling
+Built with FastAPI and Uvicorn
 """
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
