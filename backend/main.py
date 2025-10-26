@@ -119,6 +119,21 @@ def enhance_with_huggingface(image_bytes):
         return enhance_with_pil_fallback(image_bytes)
 
 
+@app.get("/")
+async def root():
+    """Root endpoint - API welcome message"""
+    return {
+        "message": "Real-ESRGAN Image Enhancement API",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "enhance": "/api/enhance (POST)",
+            "models": "/api/models"
+        }
+    }
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
