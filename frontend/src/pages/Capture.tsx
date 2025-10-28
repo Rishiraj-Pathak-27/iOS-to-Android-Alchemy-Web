@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
+import { enhanceImageWithRealESRGAN } from "@/lib/services/realEsrganApi";
 
 const Capture = () => {
   const navigate = useNavigate();
@@ -93,57 +94,50 @@ const Capture = () => {
   const enhanceImage = async (imageData: string) => {
     setIsEnhancing(true);
     try {
+      console.log("🎬 Starting enhancement...");
       toast.info("Enhancing image via backend...");
 
-      // Convert data URL to Blob
-      const blob = await (await fetch(imageData)).blob();
-      const form = new FormData();
-      form.append("file", blob, `capture_${Date.now()}.jpg`);
+      // Call the API service which handles CORS and backend URL correctly
+      console.log("📞 Calling enhanceImageWithRealESRGAN service...");
+      const result = await enhanceImageWithRealESRGAN(imageData);
 
-      const resp = await fetch("/api/enhance", {
-        method: "POST",
-        body: form,
-      });
-
-      if (!resp.ok) {
-        const body = await resp.text();
-        console.error("Enhance API error:", resp.status, body);
-        toast.error("Enhancement failed on server. See console for details.");
+      if (!result.success || !result.enhancedImage) {
+        console.error("❌ Enhancement failed:", result.error);
+        toast.error(`Enhancement failed: ${result.error || "Unknown error"}`);
         return;
       }
 
-      const json = await resp.json();
-      if (!json.success || !json.enhanced_image) {
-        console.error("Enhance API response invalid:", json);
-        toast.error("Enhancement failed: invalid response from server.");
-        return;
-      }
-
-      const enhanced = `data:image/jpeg;base64,${json.enhanced_image}`;
-      setEnhancedImage(enhanced);
+      console.log("✅ Enhancement successful:", { model: result.modelUsed, psnr_after: result.psnr_after });
+      setEnhancedImage(result.enhancedImage);
 
       // Save to gallery with PSNR history and model info
       try {
         const psnrHistoryEntry = {
           timestamp: new Date().toISOString(),
-          psnr_before: json.psnr_before ?? null,
-          psnr_after: json.psnr_after ?? null,
-          model: json.model_used ?? "unknown",
+          psnr_before: result.psnr_before ?? null,
+          psnr_after: result.psnr_after ?? null,
+          model: result.modelUsed ?? "unknown",
         };
 
         galleryStorage.add({
           original_image_url: imageData,
-          enhanced_image_url: enhanced,
-          metadata: ({ source: "camera_capture", psnr_history: [psnrHistoryEntry], model_used: json.model_used } as any)
+          enhanced_image_url: result.enhancedImage,
+          metadata: {
+            source: "camera_capture",
+            psnr_history: [psnrHistoryEntry],
+            model_used: result.modelUsed,
+            histograms: result.histograms,
+          } as any
         });
       } catch (storageError) {
-        console.error("Failed to save to gallery:", storageError);
+        console.error("⚠️  Failed to save to gallery:", storageError);
       }
 
-      toast.success("Enhancement complete and saved!");
+      toast.success("Enhancement complete and saved to gallery!");
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      console.error("❌ Enhancement error:", errorMsg);
       toast.error("Enhancement failed. Please try again.");
-      console.error("Enhancement error:", error);
     } finally {
       setIsEnhancing(false);
     }

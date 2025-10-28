@@ -165,36 +165,40 @@ def degrade_image_jpeg(image_bytes: bytes, quality: int = 50) -> bytes:
 
 def enhance_with_huggingface(image_bytes):
     """
-    Enhance image using Hugging Face Inference API with fallback
+    Enhance image using Hugging Face Inference API with fallback to PIL
+    Primary: Try HF Real-ESRGAN 
+    Fallback: Use PIL enhancement if HF fails or no token
     """
-    logger.info("Sending image to Hugging Face Real-ESRGAN model...")
+    logger.info("Attempting Real-ESRGAN enhancement via Hugging Face API...")
 
     api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
     
-    # Look for the standard env var names used for HF tokens
+    # Check for standard HF token env var names
     hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
     
-    # Log token status for debugging (don't print token value)
+    hf_debug = {"token_found": False, "attempts": []}
+    
+    # Try HF API even without token (some models allow free access)
     if hf_token:
         logger.info("✅ HF token found in environment variables")
+        hf_debug["token_found"] = True
     else:
-        logger.info("❌ No HF token found in env vars — using PIL fallback")
-
-    # If no HF token configured, immediately use PIL fallback
-    if not hf_token:
-        pil_bytes = enhance_with_pil_fallback(image_bytes)
-        return pil_bytes, "pil", {"reason": "no_token"}
+        logger.info("⚠️  No HF token found, attempting free tier access...")
+        hf_debug["token_found"] = False
 
     # Use binary content type for raw image bytes
     headers = {
         "Content-Type": "application/octet-stream",
-        "Authorization": f"Bearer {hf_token}"
     }
+    
+    # Add token if available
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
 
-    # Try the HF API with a small retry loop; accept only image/* responses
-    hf_debug = {"attempts": []}
+    # Try the HF API with retry loop; accept only image/* responses
     for attempt in range(3):
         try:
+            logger.info(f"HF API attempt {attempt+1}/3...")
             response = requests.post(
                 api_url,
                 data=image_bytes,
@@ -205,11 +209,16 @@ def enhance_with_huggingface(image_bytes):
             content_type = response.headers.get("Content-Type", "")
             # If HF returns an image (binary), accept it
             if response.status_code == 200 and content_type.startswith("image"):
-                logger.info("✅ Real-ESRGAN enhancement completed via HF API")
-                hf_debug["attempts"].append({"status": response.status_code, "content_type": content_type})
+                logger.info("✅ Real-ESRGAN enhancement completed successfully via HF API")
+                hf_debug["attempts"].append({
+                    "attempt": attempt + 1,
+                    "status": response.status_code,
+                    "content_type": content_type,
+                    "success": True
+                })
                 return response.content, "huggingface", hf_debug
 
-            # Log JSON error or text body for debugging
+            # Log non-success response
             body_text = None
             body_json = None
             try:
@@ -217,26 +226,43 @@ def enhance_with_huggingface(image_bytes):
                 body_text = str(body_json)
             except Exception:
                 try:
-                    body_text = response.text
+                    body_text = response.text[:200]  # Limit text for logging
                 except Exception:
-                    body_text = None
+                    body_text = "Unable to read response"
 
             logger.warning(
-                f"HF API returned status {response.status_code}, content-type={content_type}, body={body_text}"
+                f"HF API attempt {attempt+1}: status={response.status_code}, content-type={content_type}, body={body_text}"
             )
             hf_debug["attempts"].append({
+                "attempt": attempt + 1,
                 "status": response.status_code,
                 "content_type": content_type,
                 "body": body_json if body_json is not None else body_text,
+                "success": False
             })
+            
+            # Wait briefly before retry (except on last attempt)
+            if attempt < 2:
+                import time
+                time.sleep(1)
 
         except Exception as e:
-            logger.warning(f"HF API request attempt {attempt+1} failed: {e}")
-            hf_debug["attempts"].append({"error": str(e)})
+            logger.warning(f"HF API attempt {attempt+1} failed with error: {e}")
+            hf_debug["attempts"].append({
+                "attempt": attempt + 1,
+                "error": str(e),
+                "success": False
+            })
+            
+            # Wait briefly before retry (except on last attempt)
+            if attempt < 2:
+                import time
+                time.sleep(1)
 
     # If we reach here, HF did not return a usable image — fallback to PIL
-    logger.info("HF API unavailable or returned non-image after retries — using PIL fallback")
+    logger.info("HF API unavailable/failed after retries — falling back to PIL enhancement")
     pil_bytes = enhance_with_pil_fallback(image_bytes)
+    hf_debug["fallback_used"] = True
     return pil_bytes, "pil", hf_debug
 
 
