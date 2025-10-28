@@ -109,19 +109,60 @@ const Gallery = () => {
                   labels: selectedItem.metadata.psnr_history.map((h: any) => new Date(h.timestamp).toLocaleString()),
                   datasets: [
                     {
+                      label: 'PSNR Before (dB)',
+                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr_before ?? null),
+                      borderColor: 'rgba(249,115,22,0.95)',
+                      backgroundColor: 'rgba(249,115,22,0.12)',
+                      tension: 0.25,
+                      fill: true,
+                      pointRadius: 4,
+                      pointHoverRadius: 6,
+                    },
+                    {
                       label: 'PSNR After (dB)',
-                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr_after ?? 0),
-                      borderColor: 'rgba(14,165,233,0.9)',
-                      backgroundColor: 'rgba(14,165,233,0.3)',
-                      tension: 0.2,
+                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr_after ?? null),
+                      borderColor: 'rgba(14,165,233,0.95)',
+                      backgroundColor: 'rgba(14,165,233,0.14)',
+                      tension: 0.25,
+                      fill: true,
+                      pointRadius: 4,
+                      pointHoverRadius: 6,
                     }
                   ]
                 }}
                 options={{
                   responsive: true,
-                  scales: { y: { beginAtZero: true, max: 60 } }
+                  interaction: { mode: 'index', intersect: false },
+                  plugins: {
+                    legend: { position: 'top' },
+                    tooltip: { enabled: true, mode: 'index' }
+                  },
+                  scales: {
+                    y: { beginAtZero: true, suggestedMax: 60 },
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } }
+                  }
                 }}
               />
+              {/* Latest stats */}
+              <div className="mt-4 text-sm text-muted-foreground">
+                {(() => {
+                  const last = selectedItem.metadata.psnr_history[selectedItem.metadata.psnr_history.length - 1];
+                  const prev = selectedItem.metadata.psnr_history[selectedItem.metadata.psnr_history.length - 2];
+                  const improvement = last && prev && last.psnr_after != null && prev.psnr_after != null
+                    ? (last.psnr_after - prev.psnr_after)
+                    : null;
+
+                  return (
+                    <div>
+                      <div>Model used: <strong>{last.model ?? selectedItem.metadata.model_used ?? 'unknown'}</strong></div>
+                      <div className="mt-1">Last After: <strong>{last.psnr_after != null ? `${last.psnr_after} dB` : 'N/A'}</strong></div>
+                      {improvement != null ? (
+                        <div className="mt-1">Change vs previous: <strong className={improvement >= 0 ? 'text-green-600' : 'text-rose-600'}>{improvement >= 0 ? '+' : ''}{improvement.toFixed(2)} dB</strong></div>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           ) : null}
 

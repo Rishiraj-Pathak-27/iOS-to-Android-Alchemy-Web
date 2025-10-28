@@ -93,88 +93,54 @@ const Capture = () => {
   const enhanceImage = async (imageData: string) => {
     setIsEnhancing(true);
     try {
-      toast.info("Enhancing image with AI...");
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Apply iOS-like enhancements using canvas
-      const img = new Image();
-      img.onload = async () => {
-        if (canvasRef.current) {
-          const canvas = canvasRef.current;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-            
-            // iOS-like enhancement algorithm
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imgData.data;
-            
-            // Step 1: Enhanced contrast (moderate)
-            const contrastFactor = 1.18;
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = ((data[i] - 128) * contrastFactor) + 128;
-              data[i + 1] = ((data[i + 1] - 128) * contrastFactor) + 128;
-              data[i + 2] = ((data[i + 2] - 128) * contrastFactor) + 128;
-            }
-            
-            // Step 2: Natural saturation boost (subtle)
-            for (let i = 0; i < data.length; i += 4) {
-              const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-              const saturationFactor = 1.12;
-              data[i] = avg + (data[i] - avg) * saturationFactor;
-              data[i + 1] = avg + (data[i + 1] - avg) * saturationFactor;
-              data[i + 2] = avg + (data[i + 2] - avg) * saturationFactor;
-            }
-            
-            // Step 3: iOS cool tone adjustment (cooler, more natural)
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = data[i] * 0.98; // Slightly reduce red
-              data[i + 2] = Math.min(255, data[i + 2] * 1.03); // Slightly boost blue
-            }
-            
-            // Step 4: Clamp values
-            for (let i = 0; i < data.length; i += 4) {
-              data[i] = Math.max(0, Math.min(255, data[i]));
-              data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
-              data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
-            }
-            
-            ctx.putImageData(imgData, 0, 0);
-            
-            // Step 5: Apply subtle sharpening and clarity
-            ctx.filter = "contrast(1.08) saturate(1.1) brightness(1.02)";
-            ctx.drawImage(canvas, 0, 0);
-            ctx.filter = "none";
-            
-            const enhanced = canvas.toDataURL("image/jpeg", 0.95);
-            setEnhancedImage(enhanced);
-            
-            // Auto-save enhanced image
-            const link = document.createElement("a");
-            link.href = enhanced;
-            link.download = `enhanced_${Date.now()}.jpg`;
-            link.click();
-            
-            // Save to gallery using localStorage
-            try {
-              galleryStorage.add({
-                original_image_url: imageData,
-                enhanced_image_url: enhanced,
-                metadata: { source: "camera_capture" }
-              });
-            } catch (storageError) {
-              console.error("Failed to save to gallery:", storageError);
-            }
-            
-            toast.success("Enhancement complete and saved!");
-          }
-        }
-      };
-      img.src = imageData;
+      toast.info("Enhancing image via backend...");
+
+      // Convert data URL to Blob
+      const blob = await (await fetch(imageData)).blob();
+      const form = new FormData();
+      form.append("file", blob, `capture_${Date.now()}.jpg`);
+
+      const resp = await fetch("/api/enhance", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!resp.ok) {
+        const body = await resp.text();
+        console.error("Enhance API error:", resp.status, body);
+        toast.error("Enhancement failed on server. See console for details.");
+        return;
+      }
+
+      const json = await resp.json();
+      if (!json.success || !json.enhanced_image) {
+        console.error("Enhance API response invalid:", json);
+        toast.error("Enhancement failed: invalid response from server.");
+        return;
+      }
+
+      const enhanced = `data:image/jpeg;base64,${json.enhanced_image}`;
+      setEnhancedImage(enhanced);
+
+      // Save to gallery with PSNR history and model info
+      try {
+        const psnrHistoryEntry = {
+          timestamp: new Date().toISOString(),
+          psnr_before: json.psnr_before ?? null,
+          psnr_after: json.psnr_after ?? null,
+          model: json.model_used ?? "unknown",
+        };
+
+        galleryStorage.add({
+          original_image_url: imageData,
+          enhanced_image_url: enhanced,
+          metadata: ({ source: "camera_capture", psnr_history: [psnrHistoryEntry], model_used: json.model_used } as any)
+        });
+      } catch (storageError) {
+        console.error("Failed to save to gallery:", storageError);
+      }
+
+      toast.success("Enhancement complete and saved!");
     } catch (error) {
       toast.error("Enhancement failed. Please try again.");
       console.error("Enhancement error:", error);
