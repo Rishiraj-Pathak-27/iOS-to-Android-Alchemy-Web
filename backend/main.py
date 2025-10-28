@@ -5,6 +5,7 @@ Built with FastAPI and Uvicorn
 """
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import base64
 import io
@@ -169,53 +170,72 @@ def enhance_with_huggingface(image_bytes):
     logger.info("Sending image to Hugging Face Real-ESRGAN model...")
 
     api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
+    
     # Look for the standard env var names used for HF tokens
     hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
+    
+    # Log token status for debugging (don't print token value)
+    if hf_token:
+        logger.info("✅ HF token found in environment variables")
+    else:
+        logger.info("❌ No HF token found in env vars — using PIL fallback")
 
     # If no HF token configured, immediately use PIL fallback
     if not hf_token:
-        logger.info("No HF token found — using PIL fallback")
         pil_bytes = enhance_with_pil_fallback(image_bytes)
-        return pil_bytes, "pil"
+        return pil_bytes, "pil", {"reason": "no_token"}
 
+    # Use binary content type for raw image bytes
     headers = {
-        "Content-Type": "image/png",
+        "Content-Type": "application/octet-stream",
         "Authorization": f"Bearer {hf_token}"
     }
 
     # Try the HF API with a small retry loop; accept only image/* responses
     hf_debug = {"attempts": []}
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             response = requests.post(
                 api_url,
                 data=image_bytes,
                 headers=headers,
-                timeout=30,
+                timeout=40,
             )
 
             content_type = response.headers.get("Content-Type", "")
+            # If HF returns an image (binary), accept it
             if response.status_code == 200 and content_type.startswith("image"):
                 logger.info("✅ Real-ESRGAN enhancement completed via HF API")
                 hf_debug["attempts"].append({"status": response.status_code, "content_type": content_type})
                 return response.content, "huggingface", hf_debug
 
-            # If HF returns JSON error or non-image, log and retry once
+            # Log JSON error or text body for debugging
+            body_text = None
+            body_json = None
             try:
-                err = response.json()
+                body_json = response.json()
+                body_text = str(body_json)
             except Exception:
-                err = None
+                try:
+                    body_text = response.text
+                except Exception:
+                    body_text = None
 
             logger.warning(
-                f"HF API returned status {response.status_code}, content-type={content_type}, body={err}"
+                f"HF API returned status {response.status_code}, content-type={content_type}, body={body_text}"
             )
-            hf_debug["attempts"].append({"status": response.status_code, "content_type": content_type, "body": err})
+            hf_debug["attempts"].append({
+                "status": response.status_code,
+                "content_type": content_type,
+                "body": body_json if body_json is not None else body_text,
+            })
+
         except Exception as e:
             logger.warning(f"HF API request attempt {attempt+1} failed: {e}")
             hf_debug["attempts"].append({"error": str(e)})
 
     # If we reach here, HF did not return a usable image — fallback to PIL
-    logger.info("HF API unavailable or returned non-image — using PIL fallback")
+    logger.info("HF API unavailable or returned non-image after retries — using PIL fallback")
     pil_bytes = enhance_with_pil_fallback(image_bytes)
     return pil_bytes, "pil", hf_debug
 
@@ -262,6 +282,7 @@ async def enhance_image(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="File must be an image")
 
         contents = await file.read()
+        logger.info(f"Received upload: filename={file.filename}, content_type={file.content_type}, bytes={len(contents)}")
         
         if not contents:
             raise HTTPException(status_code=400, detail="Empty file uploaded")
@@ -294,12 +315,17 @@ async def enhance_image(file: UploadFile = File(...)):
 
             if enhanced_bytes is None:
                 logger.error("All enhancement methods failed")
-                raise HTTPException(status_code=503, detail="Enhancement service temporarily unavailable")
+                error_detail = "Enhancement service temporarily unavailable"
+                if 'hf_debug' in locals() and hf_debug is not None:
+                    logger.error(f"HF Debug info: {hf_debug}")
+                raise HTTPException(status_code=503, detail=error_detail)
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Enhancement failed: {e}")
+            if 'hf_debug' in locals() and hf_debug is not None:
+                logger.error(f"HF Debug info: {hf_debug}")
             raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")
 
         # Create a degraded 'before' image for a meaningful before/after comparison
@@ -358,6 +384,8 @@ async def enhance_image(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"❌ Enhancement error: {str(e)}")
+        if 'hf_debug' in locals() and hf_debug is not None:
+            logger.error(f"HF Debug info: {hf_debug}")
         raise HTTPException(
             status_code=500,
             detail=f"Image enhancement failed: {str(e)}"

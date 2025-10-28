@@ -34,6 +34,7 @@ export async function enhanceImageWithRealESRGAN(
   imageFile: File | string
 ): Promise<EnhancementResult> {
   try {
+    console.log("🚀 Enhancement started. Backend URL:", ENHANCEMENT_ENDPOINT);
     const formData = new FormData();
 
     if (imageFile instanceof File) {
@@ -55,22 +56,32 @@ export async function enhanceImageWithRealESRGAN(
     }
 
     // Call backend API
+    console.log("📤 Sending request to backend...");
     const response = await fetch(ENHANCEMENT_ENDPOINT, {
       method: "POST",
       body: formData,
       // Don't set Content-Type header - browser will set it with boundary
     });
 
+    console.log("📥 Response status:", response.status);
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({
-        error: `Enhancement failed with status ${response.status}`,
-      }));
-      throw new Error(errorData.error || "Image enhancement failed");
+      let errorData: any;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+      }
+      const errorMsg = errorData.detail || errorData.error || `Enhancement failed with status ${response.status}`;
+      console.error("❌ Backend error:", errorMsg, errorData);
+      throw new Error(errorMsg);
     }
 
     const result = await response.json();
+    console.log("✅ Backend response received:", { model_used: result.model_used, psnr_before: result.psnr_before, psnr_after: result.psnr_after });
 
     if (!result.enhanced_image) {
+      console.error("❌ No enhanced image in response:", result);
       throw new Error("No enhanced image returned from backend");
     }
 
@@ -88,13 +99,11 @@ export async function enhanceImageWithRealESRGAN(
       histograms: result.histograms || {},
     };
   } catch (error) {
-    console.error("Image enhancement error:", error);
+    const errorMsg = error instanceof Error ? error.message : "Unknown error during image enhancement";
+    console.error("🔴 Image enhancement error:", errorMsg);
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error during image enhancement",
+      error: errorMsg,
     };
   }
 }
