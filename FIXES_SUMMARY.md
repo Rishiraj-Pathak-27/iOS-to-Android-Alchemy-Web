@@ -11,8 +11,8 @@
 **Problem:** Even with HF token available, backend was falling back to PIL processing immediately.
 
 **Root Cause:** 
-- Environment variable check was looking for hardcoded token name `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` instead of standard names
-- Code had reversed priority: checking for token and immediately giving up if not found
+- Previous code had issues with environment variable detection
+- Backend was not properly checking for HF tokens
 
 **Solution Applied:**
 1. ✅ Fixed env var check to look for standard names: `HF_API_TOKEN`, `HUGGINGFACE_API_KEY`, `HF_TOKEN`
