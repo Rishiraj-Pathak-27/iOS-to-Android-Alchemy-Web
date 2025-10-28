@@ -5,6 +5,27 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+);
 
 interface GalleryItem {
   id: string;
@@ -78,6 +99,31 @@ const Gallery = () => {
             beforeImage={selectedItem.original_image_url}
             afterImage={selectedItem.enhanced_image_url}
           />
+
+          {/* PSNR history chart */}
+          {selectedItem.metadata?.psnr_history && selectedItem.metadata.psnr_history.length > 0 ? (
+            <div className="mt-6 glass rounded-2xl p-4">
+              <h3 className="text-lg font-semibold mb-2">PSNR History</h3>
+              <Line
+                data={{
+                  labels: selectedItem.metadata.psnr_history.map((h: any) => new Date(h.timestamp).toLocaleString()),
+                  datasets: [
+                    {
+                      label: 'PSNR (dB)',
+                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr ?? 0),
+                      borderColor: 'rgba(14,165,233,0.9)',
+                      backgroundColor: 'rgba(14,165,233,0.3)',
+                      tension: 0.2,
+                    }
+                  ]
+                }}
+                options={{
+                  responsive: true,
+                  scales: { y: { beginAtZero: true, max: 60 } }
+                }}
+              />
+            </div>
+          ) : null}
 
           <div className="mt-6 glass rounded-2xl p-4">
             <p className="text-sm text-muted-foreground">

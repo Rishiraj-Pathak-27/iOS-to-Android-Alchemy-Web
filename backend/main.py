@@ -129,29 +129,29 @@ def enhance_with_huggingface(image_bytes):
         logger.info("Sending image to Hugging Face Real-ESRGAN model...")
         
         api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
-        
         hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
+
+        # If no HF token configured, immediately use PIL fallback
+        if not hf_token:
+            logger.info("No HF token found — using PIL fallback")
+            pil_bytes = enhance_with_pil_fallback(image_bytes)
+            return pil_bytes, "pil"
+
         headers = {
-            "Content-Type": "image/png"
+            "Content-Type": "image/png",
+            "Authorization": f"Bearer {hf_token}"
         }
-        
-        if hf_token:
-            headers["Authorization"] = f"Bearer {hf_token}"
-        
+
         response = requests.post(
             api_url,
             data=image_bytes,
             headers=headers,
             timeout=30
         )
-        
+
         if response.status_code == 200:
             logger.info("✅ Real-ESRGAN enhancement completed via HF API")
             return response.content, "huggingface"
-        elif response.status_code == 401:
-            logger.info("⚠️ HF API auth skipped (no token configured), using PIL fallback...")
-            pil_bytes = enhance_with_pil_fallback(image_bytes)
-            return pil_bytes, "pil"
         else:
             logger.warning(f"⚠️ HF API returned {response.status_code}, using PIL fallback...")
             pil_bytes = enhance_with_pil_fallback(image_bytes)
@@ -240,33 +240,10 @@ async def enhance_image(file: UploadFile = File(...)):
             logger.error(f"Enhancement failed: {e}")
             raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")
 
-        # Calculate PSNR metrics
-        psnr_hf = None
-        psnr_pil = None
+        # Calculate PSNR metric comparing original input and the enhanced output
+        psnr = None
         try:
-            # PSNR for the model we used
-            psnr_model = compute_psnr(png_bytes, enhanced_bytes)
-            if model_used == "huggingface":
-                psnr_hf = psnr_model
-                # Also compute PIL fallback PSNR for comparison (non-blocking but useful)
-                try:
-                    pil_bytes = enhance_with_pil_fallback(png_bytes)
-                    if pil_bytes:
-                        psnr_pil = compute_psnr(png_bytes, pil_bytes)
-                except Exception:
-                    psnr_pil = None
-            else:
-                # model_used is pil (fallback)
-                psnr_pil = psnr_model
-                # If HF token present, attempt HF for comparison (best-effort)
-                try:
-                    hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
-                    if hf_token:
-                        hf_bytes, _ = enhance_with_huggingface(png_bytes)
-                        if hf_bytes:
-                            psnr_hf = compute_psnr(png_bytes, hf_bytes)
-                except Exception:
-                    psnr_hf = None
+            psnr = compute_psnr(png_bytes, enhanced_bytes)
         except Exception as e:
             logger.warning(f"PSNR calculation warning: {e}")
 
@@ -288,8 +265,7 @@ async def enhance_image(file: UploadFile = File(...)):
             "enhanced_image": enhanced_base64,
             "message": "Image enhanced successfully",
             "model_used": model_used,
-            "psnr_hf": psnr_hf,
-            "psnr_pil": psnr_pil
+            "psnr": psnr
         }
 
     except HTTPException:

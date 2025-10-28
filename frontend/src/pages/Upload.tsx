@@ -6,6 +6,29 @@ import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
 import { enhanceImageWithRealESRGAN, checkBackendHealth } from "@/lib/services/realEsrganApi";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 // Helper function to compress image for storage
 const compressImageForStorage = (base64Image: string): Promise<string> => {
@@ -56,8 +79,7 @@ const Upload = () => {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
-  const [psnrHF, setPsnrHF] = useState<number | null>(null);
-  const [psnrPIL, setPsnrPIL] = useState<number | null>(null);
+  const [psnr, setPsnr] = useState<number | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const toastRef = useRef<string | null>(null); // For tracking enhancement toast
@@ -208,9 +230,8 @@ const Upload = () => {
 
   const enhancedResult = result.enhancedImage;
   // Model and PSNR info (may be null)
-  setModelUsed(result.modelUsed || null);
-  setPsnrHF(result.psnrHF ?? null);
-  setPsnrPIL(result.psnrPIL ?? null);
+    setModelUsed(result.modelUsed || null);
+    setPsnr(result.psnr ?? null);
       setEnhancedImage(enhancedResult);
 
       // Save to gallery using localStorage
@@ -225,10 +246,13 @@ const Upload = () => {
           metadata: ({
             source: "manual_upload",
             enhancement: result.modelUsed || "unknown",
-            psnr: {
-              hf: result.psnrHF ?? null,
-              pil: result.psnrPIL ?? null
-            },
+            psnr_history: [
+              {
+                timestamp: new Date().toISOString(),
+                psnr: result.psnr ?? null,
+                model: result.modelUsed || "unknown",
+              },
+            ],
             timestamp: new Date().toISOString()
           } as any)
         });
@@ -382,38 +406,37 @@ const Upload = () => {
               beforeImage={originalImage}
               afterImage={enhancedImage}
             />
-            {/* PSNR Chart / Summary */}
+            {/* PSNR Chart / Summary (single PSNR comparing original -> enhanced) */}
             <div className="bg-muted p-4 rounded-lg max-w-2xl mx-auto">
-              <h3 className="text-lg font-semibold mb-2">Quality Comparison (PSNR)</h3>
-              <div className="flex items-center gap-4 mb-2">
-                <div className="flex-1">
-                  <div className="text-sm">Real-ESRGAN (HF)</div>
-                  <div className="h-4 bg-gray-200 rounded overflow-hidden mt-1">
-                    <div
-                      className="h-4 bg-teal-500"
-                      style={{ width: `${Math.min(((psnrHF ?? 0) / 50) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">{psnrHF ?? 'N/A'} dB</div>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm">PIL (Fallback)</div>
-                  <div className="h-4 bg-gray-200 rounded overflow-hidden mt-1">
-                    <div
-                      className="h-4 bg-indigo-500"
-                      style={{ width: `${Math.min(((psnrPIL ?? 0) / 50) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">{psnrPIL ?? 'N/A'} dB</div>
-                </div>
+              <h3 className="text-lg font-semibold mb-2">Quality (PSNR)</h3>
+              <p className="text-sm text-muted-foreground mb-2">Model used: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN' : modelUsed === 'pil' ? 'PIL (fallback)' : 'Unknown'}</strong></p>
+              <div className="max-w-md mx-auto">
+                <Bar
+                  data={{
+                    labels: ['PSNR'],
+                    datasets: [
+                      {
+                        label: 'PSNR (dB)',
+                        data: [psnr ?? 0],
+                        backgroundColor: 'rgba(14,165,233,0.8)'
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        max: 60
+                      }
+                    },
+                    plugins: {
+                      legend: { display: false }
+                    }
+                  }}
+                />
+                <div className="text-center text-sm text-muted-foreground mt-2">{psnr !== null ? `${psnr} dB` : 'PSNR not available'}</div>
               </div>
-              {psnrHF !== null && psnrPIL !== null ? (
-                <div className="text-sm">
-                  Difference: <strong>{(((psnrHF - psnrPIL) / (psnrPIL || 1)) * 100).toFixed(1)}%</strong> ({psnrHF - psnrPIL} dB)
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">Comparison data not available</div>
-              )}
             </div>
             <div className="flex gap-4 justify-center">
               <Button
