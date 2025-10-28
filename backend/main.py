@@ -174,16 +174,20 @@ def enhance_with_huggingface(image_bytes):
     api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
     
     # Check for standard HF token env var names
-    hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
+    hf_token = (
+        os.getenv("HF_API_TOKEN") or 
+        os.getenv("HUGGINGFACE_API_KEY") or 
+        os.getenv("HF_TOKEN")
+    )
     
     hf_debug = {"token_found": False, "attempts": []}
     
-    # Try HF API even without token (some models allow free access)
+    # Try HF API with token
     if hf_token:
         logger.info("✅ HF token found in environment variables")
         hf_debug["token_found"] = True
     else:
-        logger.info("⚠️  No HF token found, attempting free tier access...")
+        logger.info("⚠️  No HF token found - Real-ESRGAN will NOT work. Set one of: HF_API_TOKEN, HUGGINGFACE_API_KEY, HF_TOKEN")
         hf_debug["token_found"] = False
 
     # Use binary content type for raw image bytes
