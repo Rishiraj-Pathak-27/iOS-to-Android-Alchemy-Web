@@ -98,15 +98,16 @@ def compute_psnr(original_bytes: bytes, enhanced_bytes: bytes) -> float:
         orig = Image.open(io.BytesIO(original_bytes)).convert('RGB')
         enh = Image.open(io.BytesIO(enhanced_bytes)).convert('RGB')
 
-        # Resize original to enhanced size for fair comparison
-        if orig.size != enh.size:
-            orig_resized = orig.resize(enh.size, Image.Resampling.LANCZOS)
+        # Ensure both images are compared at the original image size
+        # Resize enhanced to original size if necessary
+        if enh.size != orig.size:
+            enh_resized = enh.resize(orig.size, Image.Resampling.LANCZOS)
         else:
-            orig_resized = orig
+            enh_resized = enh
 
         # Convert to numpy arrays
-        orig_arr = np.array(orig_resized).astype(np.float64)
-        enh_arr = np.array(enh).astype(np.float64)
+        orig_arr = np.array(orig).astype(np.float64)
+        enh_arr = np.array(enh_resized).astype(np.float64)
 
         # Compute MSE
         mse = np.mean((orig_arr - enh_arr) ** 2)
@@ -121,6 +122,20 @@ def compute_psnr(original_bytes: bytes, enhanced_bytes: bytes) -> float:
         return 0.0
 
 
+def degrade_image_jpeg(image_bytes: bytes, quality: int = 50) -> bytes:
+    """Create a degraded version of the input image by re-encoding it as JPEG at given quality.
+    Returns JPEG bytes.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        out = io.BytesIO()
+        img.save(out, format='JPEG', quality=quality, optimize=True)
+        return out.getvalue()
+    except Exception as e:
+        logger.warning(f"Failed to degrade image: {e}")
+        return image_bytes
+
+
 def enhance_with_huggingface(image_bytes):
     """
     Enhance image using Hugging Face Inference API with fallback
@@ -129,7 +144,7 @@ def enhance_with_huggingface(image_bytes):
         logger.info("Sending image to Hugging Face Real-ESRGAN model...")
         
         api_url = "https://api-inference.huggingface.co/models/qualcomm/Real-ESRGAN-x4plus"
-        hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
+            hf_token = os.getenv("HF_API_TOKEN") or os.getenv("HUGGINGFACE_API_KEY")
 
         # If no HF token configured, immediately use PIL fallback
         if not hf_token:
@@ -142,12 +157,35 @@ def enhance_with_huggingface(image_bytes):
             "Authorization": f"Bearer {hf_token}"
         }
 
-        response = requests.post(
-            api_url,
-            data=image_bytes,
-            headers=headers,
-            timeout=30
-        )
+            # Try the HF API with a small retry loop; accept only image/* responses
+            for attempt in range(2):
+                try:
+                    response = requests.post(
+                        api_url,
+                        data=image_bytes,
+                        headers=headers,
+                        timeout=30
+                    )
+
+                    content_type = response.headers.get("Content-Type", "")
+                    if response.status_code == 200 and content_type.startswith("image"):
+                        logger.info("✅ Real-ESRGAN enhancement completed via HF API")
+                        return response.content, "huggingface"
+
+                    # If HF returns JSON error or non-image, log and retry once
+                    try:
+                        err = response.json()
+                    except Exception:
+                        err = None
+
+                    logger.warning(f"HF API returned status {response.status_code}, content-type={content_type}, body={err}")
+                except Exception as e:
+                    logger.warning(f"HF API request attempt {attempt+1} failed: {e}")
+
+            # If we reach here, HF did not return a usable image — fallback to PIL
+            logger.info("HF API unavailable or returned non-image — using PIL fallback")
+            pil_bytes = enhance_with_pil_fallback(image_bytes)
+            return pil_bytes, "pil"
 
         if response.status_code == 200:
             logger.info("✅ Real-ESRGAN enhancement completed via HF API")
@@ -240,12 +278,20 @@ async def enhance_image(file: UploadFile = File(...)):
             logger.error(f"Enhancement failed: {e}")
             raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")
 
-        # Calculate PSNR metric comparing original input and the enhanced output
-        psnr = None
+        # Create a degraded 'before' image for a meaningful before/after comparison
         try:
-            psnr = compute_psnr(png_bytes, enhanced_bytes)
+            degraded_bytes = degrade_image_jpeg(png_bytes, quality=50)
+            psnr_before = compute_psnr(png_bytes, degraded_bytes)
         except Exception as e:
-            logger.warning(f"PSNR calculation warning: {e}")
+            logger.warning(f"Degrade/PSNR-before warning: {e}")
+            psnr_before = None
+
+        # Calculate PSNR metric comparing original input and the enhanced output
+        psnr_after = None
+        try:
+            psnr_after = compute_psnr(png_bytes, enhanced_bytes)
+        except Exception as e:
+            logger.warning(f"PSNR-after calculation warning: {e}")
 
         try:
             enhanced_img = Image.open(io.BytesIO(enhanced_bytes))
@@ -265,7 +311,8 @@ async def enhance_image(file: UploadFile = File(...)):
             "enhanced_image": enhanced_base64,
             "message": "Image enhanced successfully",
             "model_used": model_used,
-            "psnr": psnr
+            "psnr_before": psnr_before,
+            "psnr_after": psnr_after
         }
 
     except HTTPException:

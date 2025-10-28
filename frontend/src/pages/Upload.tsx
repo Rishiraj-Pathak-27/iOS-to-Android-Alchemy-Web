@@ -79,7 +79,8 @@ const Upload = () => {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
-  const [psnr, setPsnr] = useState<number | null>(null);
+  const [psnrBefore, setPsnrBefore] = useState<number | null>(null);
+  const [psnrAfter, setPsnrAfter] = useState<number | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const toastRef = useRef<string | null>(null); // For tracking enhancement toast
@@ -230,8 +231,9 @@ const Upload = () => {
 
   const enhancedResult = result.enhancedImage;
   // Model and PSNR info (may be null)
-    setModelUsed(result.modelUsed || null);
-    setPsnr(result.psnr ?? null);
+  setModelUsed(result.modelUsed || null);
+  setPsnrBefore(result.psnr_before ?? null);
+  setPsnrAfter(result.psnr_after ?? null);
       setEnhancedImage(enhancedResult);
 
       // Save to gallery using localStorage
@@ -249,7 +251,8 @@ const Upload = () => {
             psnr_history: [
               {
                 timestamp: new Date().toISOString(),
-                psnr: result.psnr ?? null,
+                psnr_before: result.psnr_before ?? null,
+                psnr_after: result.psnr_after ?? null,
                 model: result.modelUsed || "unknown",
               },
             ],
@@ -410,33 +413,33 @@ const Upload = () => {
             <div className="bg-muted p-4 rounded-lg max-w-2xl mx-auto">
               <h3 className="text-lg font-semibold mb-2">Quality (PSNR)</h3>
               <p className="text-sm text-muted-foreground mb-2">Model used: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN' : modelUsed === 'pil' ? 'PIL (fallback)' : 'Unknown'}</strong></p>
-              <div className="max-w-md mx-auto">
-                <Bar
-                  data={{
-                    labels: ['PSNR'],
-                    datasets: [
-                      {
-                        label: 'PSNR (dB)',
-                        data: [psnr ?? 0],
-                        backgroundColor: 'rgba(14,165,233,0.8)'
+                <div className="max-w-md mx-auto">
+                  <Bar
+                    data={{
+                      labels: ['Before (degraded)', 'After (enhanced)'],
+                      datasets: [
+                        {
+                          label: 'PSNR (dB)',
+                          data: [psnrBefore ?? 0, psnrAfter ?? 0],
+                          backgroundColor: ['rgba(234,88,12,0.8)', 'rgba(14,165,233,0.8)']
+                        }
+                      ]
+                    }}
+                    options={{
+                      responsive: true,
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          max: 60
+                        }
+                      },
+                      plugins: {
+                        legend: { display: false }
                       }
-                    ]
-                  }}
-                  options={{
-                    responsive: true,
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        max: 60
-                      }
-                    },
-                    plugins: {
-                      legend: { display: false }
-                    }
-                  }}
-                />
-                <div className="text-center text-sm text-muted-foreground mt-2">{psnr !== null ? `${psnr} dB` : 'PSNR not available'}</div>
-              </div>
+                    }}
+                  />
+                  <div className="text-center text-sm text-muted-foreground mt-2">{psnrAfter !== null ? `After: ${psnrAfter} dB` : 'PSNR not available'}</div>
+                </div>
             </div>
             <div className="flex gap-4 justify-center">
               <Button

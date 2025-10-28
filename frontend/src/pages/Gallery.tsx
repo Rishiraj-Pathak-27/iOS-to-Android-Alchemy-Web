@@ -109,8 +109,8 @@ const Gallery = () => {
                   labels: selectedItem.metadata.psnr_history.map((h: any) => new Date(h.timestamp).toLocaleString()),
                   datasets: [
                     {
-                      label: 'PSNR (dB)',
-                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr ?? 0),
+                      label: 'PSNR After (dB)',
+                      data: selectedItem.metadata.psnr_history.map((h: any) => h.psnr_after ?? 0),
                       borderColor: 'rgba(14,165,233,0.9)',
                       backgroundColor: 'rgba(14,165,233,0.3)',
                       tension: 0.2,

@@ -9,8 +9,8 @@ export interface EnhancementResult {
   enhancedImage?: string; // base64 encoded image
   error?: string;
   modelUsed?: string | null;
-  psnrHF?: number | null;
-  psnrPIL?: number | null;
+  psnr_before?: number | null;
+  psnr_after?: number | null;
 }
 
 /**
@@ -78,8 +78,8 @@ export async function enhanceImageWithRealESRGAN(
       success: true,
       enhancedImage,
       modelUsed: result.model_used || null,
-      psnrHF: typeof result.psnr_hf === 'number' ? result.psnr_hf : null,
-      psnrPIL: typeof result.psnr_pil === 'number' ? result.psnr_pil : null,
+      psnr_before: typeof result.psnr_before === 'number' ? result.psnr_before : null,
+      psnr_after: typeof result.psnr_after === 'number' ? result.psnr_after : null,
     };
   } catch (error) {
     console.error("Image enhancement error:", error);
