@@ -11,17 +11,19 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend,
@@ -163,6 +165,77 @@ const Gallery = () => {
                   );
                 })()}
               </div>
+
+              {/* Frequency Histograms */}
+              {(() => {
+                const last = selectedItem.metadata.psnr_history[selectedItem.metadata.psnr_history.length - 1];
+                const hists = last?.histograms;
+                return hists && (hists.degraded?.length || 0) > 0 && (hists.enhanced?.length || 0) > 0 ? (
+                  <div className="mt-6 border-t pt-4">
+                    <h4 className="text-sm font-semibold mb-4">Frequency Distribution (Grayscale)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-muted p-3 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-2">Before (Degraded)</p>
+                        <Bar
+                          data={{
+                            labels: Array.from({length: 256}, (_, i) => i),
+                            datasets: [
+                              {
+                                label: 'Frequency',
+                                data: hists.degraded || [],
+                                backgroundColor: 'rgba(234,88,12,0.6)',
+                                borderColor: 'rgba(234,88,12,0.8)',
+                                borderWidth: 0,
+                                borderRadius: 0
+                              }
+                            ]
+                          }}
+                          options={{
+                            responsive: true,
+                            scales: {
+                              x: { display: false },
+                              y: { beginAtZero: true, ticks: { display: false } }
+                            },
+                            plugins: {
+                              legend: { display: false },
+                              tooltip: { enabled: false }
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="bg-muted p-3 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-2">After (Enhanced)</p>
+                        <Bar
+                          data={{
+                            labels: Array.from({length: 256}, (_, i) => i),
+                            datasets: [
+                              {
+                                label: 'Frequency',
+                                data: hists.enhanced || [],
+                                backgroundColor: 'rgba(14,165,233,0.6)',
+                                borderColor: 'rgba(14,165,233,0.8)',
+                                borderWidth: 0,
+                                borderRadius: 0
+                              }
+                            ]
+                          }}
+                          options={{
+                            responsive: true,
+                            scales: {
+                              x: { display: false },
+                              y: { beginAtZero: true, ticks: { display: false } }
+                            },
+                            plugins: {
+                              legend: { display: false },
+                              tooltip: { enabled: false }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
             </div>
           ) : null}
 

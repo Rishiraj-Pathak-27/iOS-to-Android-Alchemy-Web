@@ -11,6 +11,11 @@ export interface EnhancementResult {
   modelUsed?: string | null;
   psnr_before?: number | null;
   psnr_after?: number | null;
+  histograms?: {
+    original?: number[];
+    degraded?: number[];
+    enhanced?: number[];
+  };
 }
 
 /**
@@ -80,6 +85,7 @@ export async function enhanceImageWithRealESRGAN(
       modelUsed: result.model_used || null,
       psnr_before: typeof result.psnr_before === 'number' ? result.psnr_before : null,
       psnr_after: typeof result.psnr_after === 'number' ? result.psnr_after : null,
+      histograms: result.histograms || {},
     };
   } catch (error) {
     console.error("Image enhancement error:", error);

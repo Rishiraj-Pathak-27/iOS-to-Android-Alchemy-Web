@@ -81,6 +81,7 @@ const Upload = () => {
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [psnrBefore, setPsnrBefore] = useState<number | null>(null);
   const [psnrAfter, setPsnrAfter] = useState<number | null>(null);
+  const [histograms, setHistograms] = useState<{ original?: number[]; degraded?: number[]; enhanced?: number[] } | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const toastRef = useRef<string | null>(null); // For tracking enhancement toast
@@ -234,6 +235,7 @@ const Upload = () => {
   setModelUsed(result.modelUsed || null);
   setPsnrBefore(result.psnr_before ?? null);
   setPsnrAfter(result.psnr_after ?? null);
+  setHistograms(result.histograms || null);
       setEnhancedImage(enhancedResult);
 
       // Save to gallery using localStorage
@@ -254,6 +256,7 @@ const Upload = () => {
                 psnr_before: result.psnr_before ?? null,
                 psnr_after: result.psnr_after ?? null,
                 model: result.modelUsed || "unknown",
+                histograms: result.histograms || {}
               },
             ],
             timestamp: new Date().toISOString()
@@ -410,36 +413,118 @@ const Upload = () => {
               afterImage={enhancedImage}
             />
             {/* PSNR Chart / Summary (single PSNR comparing original -> enhanced) */}
-            <div className="bg-muted p-4 rounded-lg max-w-2xl mx-auto">
-              <h3 className="text-lg font-semibold mb-2">Quality (PSNR)</h3>
-              <p className="text-sm text-muted-foreground mb-2">Model used: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN' : modelUsed === 'pil' ? 'PIL (fallback)' : 'Unknown'}</strong></p>
-                <div className="max-w-md mx-auto">
-                  <Bar
-                    data={{
-                      labels: ['Before (degraded)', 'After (enhanced)'],
-                      datasets: [
-                        {
-                          label: 'PSNR (dB)',
-                          data: [psnrBefore ?? 0, psnrAfter ?? 0],
-                          backgroundColor: ['rgba(234,88,12,0.8)', 'rgba(14,165,233,0.8)']
-                        }
-                      ]
-                    }}
-                    options={{
-                      responsive: true,
-                      scales: {
-                        y: {
-                          beginAtZero: true,
-                          max: 60
-                        }
-                      },
-                      plugins: {
-                        legend: { display: false }
-                      }
-                    }}
-                  />
-                  <div className="text-center text-sm text-muted-foreground mt-2">{psnrAfter !== null ? `After: ${psnrAfter} dB` : 'PSNR not available'}</div>
+            <div className="glass rounded-2xl p-6 max-w-4xl mx-auto">
+              <h3 className="text-lg font-semibold mb-2">Quality Metrics</h3>
+              <p className="text-sm text-muted-foreground mb-4">Model used: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN 🚀' : modelUsed === 'pil' ? 'PIL (fallback) ⚠️' : 'Unknown'}</strong></p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-muted p-3 rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">Before (Degraded)</p>
+                  <p className="text-2xl font-bold">{psnrBefore !== null ? `${psnrBefore} dB` : 'N/A'}</p>
                 </div>
+                <div className="bg-muted p-3 rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">After (Enhanced)</p>
+                  <p className="text-2xl font-bold text-blue-600">{psnrAfter !== null ? `${psnrAfter} dB` : 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* PSNR Bar Chart */}
+              <div className="max-w-2xl mx-auto mb-6">
+                <Bar
+                  data={{
+                    labels: ['Before (degraded)', 'After (enhanced)'],
+                    datasets: [
+                      {
+                        label: 'PSNR (dB)',
+                        data: [psnrBefore ?? 0, psnrAfter ?? 0],
+                        backgroundColor: ['rgba(234,88,12,0.8)', 'rgba(14,165,233,0.8)'],
+                        borderRadius: 6
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        max: 60
+                      }
+                    },
+                    plugins: {
+                      legend: { display: false }
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Frequency Histograms */}
+              {histograms && (histograms.degraded?.length || 0) > 0 && (histograms.enhanced?.length || 0) > 0 ? (
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold mb-3">Frequency Distribution (Grayscale)</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">Before (Degraded)</p>
+                      <Bar
+                        data={{
+                          labels: Array.from({length: 256}, (_, i) => i),
+                          datasets: [
+                            {
+                              label: 'Frequency',
+                              data: histograms.degraded || [],
+                              backgroundColor: 'rgba(234,88,12,0.6)',
+                              borderColor: 'rgba(234,88,12,0.8)',
+                              borderWidth: 0,
+                              borderRadius: 0
+                            }
+                          ]
+                        }}
+                        options={{
+                          responsive: true,
+                          indexAxis: undefined,
+                          scales: {
+                            x: { display: false },
+                            y: { beginAtZero: true, ticks: { display: false } }
+                          },
+                          plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-2">After (Enhanced)</p>
+                      <Bar
+                        data={{
+                          labels: Array.from({length: 256}, (_, i) => i),
+                          datasets: [
+                            {
+                              label: 'Frequency',
+                              data: histograms.enhanced || [],
+                              backgroundColor: 'rgba(14,165,233,0.6)',
+                              borderColor: 'rgba(14,165,233,0.8)',
+                              borderWidth: 0,
+                              borderRadius: 0
+                            }
+                          ]
+                        }}
+                        options={{
+                          responsive: true,
+                          indexAxis: undefined,
+                          scales: {
+                            x: { display: false },
+                            y: { beginAtZero: true, ticks: { display: false } }
+                          },
+                          plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="flex gap-4 justify-center">
               <Button
