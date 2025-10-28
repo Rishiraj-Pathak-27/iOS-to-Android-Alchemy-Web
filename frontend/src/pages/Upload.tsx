@@ -55,6 +55,9 @@ const Upload = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
+  const [modelUsed, setModelUsed] = useState<string | null>(null);
+  const [psnrHF, setPsnrHF] = useState<number | null>(null);
+  const [psnrPIL, setPsnrPIL] = useState<number | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const toastRef = useRef<string | null>(null); // For tracking enhancement toast
@@ -185,8 +188,9 @@ const Upload = () => {
       return;
     }
     
-    setIsEnhancing(true);
+  setIsEnhancing(true);
     setEnhancedImage(null);
+  setModelUsed('attempting');
 
     const enhancementToast = toast.loading("🚀 Enhancing with Real-ESRGAN...");
 
@@ -194,7 +198,7 @@ const Upload = () => {
       toast.loading("📤 Sending image to backend...", { id: enhancementToast });
 
       // Call Real-ESRGAN API to enhance the image
-      const result = await enhanceImageWithRealESRGAN(imageData);
+  const result = await enhanceImageWithRealESRGAN(imageData);
 
       if (!result.success || !result.enhancedImage) {
         throw new Error(result.error || "Enhancement failed");
@@ -202,7 +206,11 @@ const Upload = () => {
 
       toast.loading("✨ Processing enhancement...", { id: enhancementToast });
 
-      const enhancedResult = result.enhancedImage;
+  const enhancedResult = result.enhancedImage;
+  // Model and PSNR info (may be null)
+  setModelUsed(result.modelUsed || null);
+  setPsnrHF(result.psnrHF ?? null);
+  setPsnrPIL(result.psnrPIL ?? null);
       setEnhancedImage(enhancedResult);
 
       // Save to gallery using localStorage
@@ -214,11 +222,15 @@ const Upload = () => {
         galleryStorage.add({
           original_image_url: compressedOriginal,
           enhanced_image_url: enhancedResult,
-          metadata: { 
-            source: "manual_upload", 
-            enhancement: "real_esrgan",
+          metadata: ({
+            source: "manual_upload",
+            enhancement: result.modelUsed || "unknown",
+            psnr: {
+              hf: result.psnrHF ?? null,
+              pil: result.psnrPIL ?? null
+            },
             timestamp: new Date().toISOString()
-          }
+          } as any)
         });
         
         const storageInfo = galleryStorage.getStorageInfo();
@@ -355,6 +367,11 @@ const Upload = () => {
                 <p className="text-muted-foreground">
                   Applying AI-powered iOS-quality enhancements...
                 </p>
+                {modelUsed === 'attempting' ? (
+                  <p className="text-sm text-muted-foreground">Attempting Real-ESRGAN (Hugging Face)...</p>
+                ) : modelUsed ? (
+                  <p className="text-sm text-muted-foreground">Currently using: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN' : 'PIL (fallback)'}</strong></p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -365,6 +382,39 @@ const Upload = () => {
               beforeImage={originalImage}
               afterImage={enhancedImage}
             />
+            {/* PSNR Chart / Summary */}
+            <div className="bg-muted p-4 rounded-lg max-w-2xl mx-auto">
+              <h3 className="text-lg font-semibold mb-2">Quality Comparison (PSNR)</h3>
+              <div className="flex items-center gap-4 mb-2">
+                <div className="flex-1">
+                  <div className="text-sm">Real-ESRGAN (HF)</div>
+                  <div className="h-4 bg-gray-200 rounded overflow-hidden mt-1">
+                    <div
+                      className="h-4 bg-teal-500"
+                      style={{ width: `${Math.min(((psnrHF ?? 0) / 50) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">{psnrHF ?? 'N/A'} dB</div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm">PIL (Fallback)</div>
+                  <div className="h-4 bg-gray-200 rounded overflow-hidden mt-1">
+                    <div
+                      className="h-4 bg-indigo-500"
+                      style={{ width: `${Math.min(((psnrPIL ?? 0) / 50) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">{psnrPIL ?? 'N/A'} dB</div>
+                </div>
+              </div>
+              {psnrHF !== null && psnrPIL !== null ? (
+                <div className="text-sm">
+                  Difference: <strong>{(((psnrHF - psnrPIL) / (psnrPIL || 1)) * 100).toFixed(1)}%</strong> ({psnrHF - psnrPIL} dB)
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Comparison data not available</div>
+              )}
+            </div>
             <div className="flex gap-4 justify-center">
               <Button
                 variant="outline"

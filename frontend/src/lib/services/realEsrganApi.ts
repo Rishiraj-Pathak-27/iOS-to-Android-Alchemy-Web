@@ -8,6 +8,9 @@ export interface EnhancementResult {
   success: boolean;
   enhancedImage?: string; // base64 encoded image
   error?: string;
+  modelUsed?: string | null;
+  psnrHF?: number | null;
+  psnrPIL?: number | null;
 }
 
 /**
@@ -74,6 +77,9 @@ export async function enhanceImageWithRealESRGAN(
     return {
       success: true,
       enhancedImage,
+      modelUsed: result.model_used || null,
+      psnrHF: typeof result.psnr_hf === 'number' ? result.psnr_hf : null,
+      psnrPIL: typeof result.psnr_pil === 'number' ? result.psnr_pil : null,
     };
   } catch (error) {
     console.error("Image enhancement error:", error);
