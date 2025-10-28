@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, X, Download, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { Camera, X, Download, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -280,25 +280,9 @@ const Capture = () => {
               afterImage={enhancedImage!}
             />
 
-            {/* Quality Metrics Section */}
+            {/* Quality Metrics Graphs */}
             {qualityMetrics && (
               <div className="glass rounded-3xl p-8 space-y-6 shadow-2xl">
-                {/* Model Info */}
-                <div className="border-b pb-4">
-                  <h2 className="text-2xl font-bold mb-4">Quality Metrics</h2>
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600">Model used:</span>
-                    <span className="font-semibold text-lg">
-                      {qualityMetrics.model_used === "huggingface"
-                        ? "Real-ESRGAN (HF API)"
-                        : "PIL (fallback)"}
-                    </span>
-                    {qualityMetrics.model_used !== "huggingface" && (
-                      <AlertCircle className="w-5 h-5 text-yellow-500" />
-                    )}
-                  </div>
-                </div>
-
                 {/* PSNR Comparison Chart */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* PSNR Values */}

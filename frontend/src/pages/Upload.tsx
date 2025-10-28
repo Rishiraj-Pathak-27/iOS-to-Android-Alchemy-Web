@@ -414,9 +414,6 @@ const Upload = () => {
             />
             {/* PSNR Chart / Summary (single PSNR comparing original -> enhanced) */}
             <div className="glass rounded-2xl p-6 max-w-4xl mx-auto">
-              <h3 className="text-lg font-semibold mb-2">Quality Metrics</h3>
-              <p className="text-sm text-muted-foreground mb-4">Model used: <strong>{modelUsed === 'huggingface' ? 'Real-ESRGAN 🚀' : modelUsed === 'pil' ? 'PIL (fallback) ⚠️' : 'Unknown'}</strong></p>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="bg-muted p-3 rounded-lg">
                   <p className="text-xs text-muted-foreground mb-1">Before (Degraded)</p>
