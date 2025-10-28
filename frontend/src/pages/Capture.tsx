@@ -1,11 +1,26 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, X, Download, ArrowLeft, Loader2 } from "lucide-react";
+import { Camera, X, Download, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ComparisonSlider from "@/components/ComparisonSlider";
 import { galleryStorage } from "@/lib/galleryStorage";
 import { enhanceImageWithRealESRGAN } from "@/lib/services/realEsrganApi";
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip as ChartTooltip, Legend } from "chart.js";
+import { Bar, Line } from "react-chartjs-2";
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, ChartTooltip, Legend);
+
+interface QualityMetrics {
+  psnr_before: number | null;
+  psnr_after: number | null;
+  model_used: string;
+  histograms?: {
+    original?: number[];
+    degraded?: number[];
+    enhanced?: number[];
+  };
+}
 
 const Capture = () => {
   const navigate = useNavigate();
@@ -14,6 +29,7 @@ const Capture = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null);
+  const [qualityMetrics, setQualityMetrics] = useState<QualityMetrics | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
 
@@ -110,6 +126,14 @@ const Capture = () => {
       console.log("✅ Enhancement successful:", { model: result.modelUsed, psnr_after: result.psnr_after });
       setEnhancedImage(result.enhancedImage);
 
+      // Store quality metrics
+      setQualityMetrics({
+        psnr_before: result.psnr_before ?? null,
+        psnr_after: result.psnr_after ?? null,
+        model_used: result.modelUsed ?? "unknown",
+        histograms: result.histograms,
+      });
+
       // Save to gallery with PSNR history and model info
       try {
         const psnrHistoryEntry = {
@@ -162,6 +186,7 @@ const Capture = () => {
   const resetCapture = () => {
     setCapturedImage(null);
     setEnhancedImage(null);
+    setQualityMetrics(null);
     startCamera();
   };
 
@@ -248,12 +273,167 @@ const Capture = () => {
             </div>
           </div>
         ) : (
-          // Enhanced Image Comparison View
+          // Enhanced Image Comparison View with Quality Metrics
           <div className="space-y-6">
             <ComparisonSlider
               beforeImage={capturedImage!}
               afterImage={enhancedImage!}
             />
+
+            {/* Quality Metrics Section */}
+            {qualityMetrics && (
+              <div className="glass rounded-3xl p-8 space-y-6 shadow-2xl">
+                {/* Model Info */}
+                <div className="border-b pb-4">
+                  <h2 className="text-2xl font-bold mb-4">Quality Metrics</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-600">Model used:</span>
+                    <span className="font-semibold text-lg">
+                      {qualityMetrics.model_used === "huggingface"
+                        ? "Real-ESRGAN (HF API)"
+                        : "PIL (fallback)"}
+                    </span>
+                    {qualityMetrics.model_used !== "huggingface" && (
+                      <AlertCircle className="w-5 h-5 text-yellow-500" />
+                    )}
+                  </div>
+                </div>
+
+                {/* PSNR Comparison Chart */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* PSNR Values */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-lg">PSNR Comparison (dB)</h3>
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6">
+                      <p className="text-gray-600 text-sm mb-2">Before (Degraded)</p>
+                      <p className="text-3xl font-bold text-orange-600">
+                        {qualityMetrics.psnr_before?.toFixed(2) ?? "N/A"}
+                      </p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6">
+                      <p className="text-gray-600 text-sm mb-2">After (Enhanced)</p>
+                      <p className="text-3xl font-bold text-blue-600">
+                        {qualityMetrics.psnr_after?.toFixed(2) ?? "N/A"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* PSNR Bar Chart */}
+                  <div className="flex items-center justify-center bg-gray-50 rounded-lg p-6">
+                    {qualityMetrics.psnr_before !== null && qualityMetrics.psnr_after !== null ? (
+                      <Bar
+                        data={{
+                          labels: ["Before (Degraded)", "After (Enhanced)"],
+                          datasets: [
+                            {
+                              label: "PSNR (dB)",
+                              data: [qualityMetrics.psnr_before, qualityMetrics.psnr_after],
+                              backgroundColor: ["#FB923C", "#3B82F6"],
+                              borderRadius: 8,
+                            },
+                          ],
+                        }}
+                        options={{
+                          indexAxis: "y",
+                          responsive: true,
+                          maintainAspectRatio: true,
+                          plugins: {
+                            legend: { display: false },
+                          },
+                          scales: {
+                            x: {
+                              beginAtZero: true,
+                              max: Math.max(qualityMetrics.psnr_before, qualityMetrics.psnr_after) + 5,
+                            },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <p className="text-gray-500">No PSNR data available</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Histogram Display */}
+                {qualityMetrics.histograms && (
+                  <div className="border-t pt-6 space-y-4">
+                    <h3 className="font-semibold text-lg">Frequency Distribution (Grayscale)</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Before Histogram */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-3">Before (Degraded)</p>
+                        {qualityMetrics.histograms.degraded && qualityMetrics.histograms.degraded.length > 0 ? (
+                          <Line
+                            data={{
+                              labels: Array.from({ length: 256 }, (_, i) => i),
+                              datasets: [
+                                {
+                                  label: "Grayscale Distribution",
+                                  data: qualityMetrics.histograms.degraded,
+                                  borderColor: "#FB923C",
+                                  backgroundColor: "rgba(251, 146, 60, 0.1)",
+                                  tension: 0.4,
+                                  borderWidth: 2,
+                                  pointRadius: 0,
+                                  fill: true,
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: true,
+                              plugins: { legend: { display: false } },
+                              scales: {
+                                x: { display: false },
+                                y: { beginAtZero: true },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <p className="text-gray-500 text-sm">No histogram data</p>
+                        )}
+                      </div>
+
+                      {/* After Histogram */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-gray-600 mb-3">After (Enhanced)</p>
+                        {qualityMetrics.histograms.enhanced && qualityMetrics.histograms.enhanced.length > 0 ? (
+                          <Line
+                            data={{
+                              labels: Array.from({ length: 256 }, (_, i) => i),
+                              datasets: [
+                                {
+                                  label: "Grayscale Distribution",
+                                  data: qualityMetrics.histograms.enhanced,
+                                  borderColor: "#3B82F6",
+                                  backgroundColor: "rgba(59, 130, 246, 0.1)",
+                                  tension: 0.4,
+                                  borderWidth: 2,
+                                  pointRadius: 0,
+                                  fill: true,
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: true,
+                              plugins: { legend: { display: false } },
+                              scales: {
+                                x: { display: false },
+                                y: { beginAtZero: true },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <p className="text-gray-500 text-sm">No histogram data</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-4 justify-center">
               <Button
                 variant="outline"

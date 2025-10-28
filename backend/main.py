@@ -4,6 +4,27 @@ Using Real-ESRGAN model from Hugging Face for professional image upscaling
 Built with FastAPI and Uvicorn
 """
 
+# Load environment variables from .env.backend file
+from pathlib import Path
+import os
+
+# Find and load .env.backend file
+env_path = Path(__file__).parent.parent / ".env.backend"
+if env_path.exists():
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                os.environ[key.strip()] = value.strip()
+                if key.strip() == "HF_API_TOKEN":
+                    logger_temp = __import__("logging").getLogger(__name__)
+                    logger_temp.info(f"✅ Loaded HF_API_TOKEN from .env.backend (length: {len(value.strip())} chars)")
+else:
+    import logging
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.warning("⚠️  .env.backend file not found")
+
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,12 +33,11 @@ import io
 import logging
 from PIL import Image
 import requests
-import os
-from pathlib import Path
 import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 app = FastAPI(title="Real-ESRGAN Image Enhancement API", version="1.0.0")
 
@@ -92,7 +112,7 @@ def enhance_with_pil_fallback(image_bytes):
 
 def compute_psnr(original_bytes: bytes, enhanced_bytes: bytes) -> float:
     """Compute PSNR (Peak Signal-to-Noise Ratio) between original and enhanced images.
-    Returns PSNR in decibels (dB), rounded to 2 decimals. If calculation fails returns 0.0.
+    Returns PSNR in decibels (dB), rounded to 2 decimals. If calculation fails returns None.
     """
     try:
         # Open images with PIL and convert to RGB
@@ -112,11 +132,17 @@ def compute_psnr(original_bytes: bytes, enhanced_bytes: bytes) -> float:
 
         # Compute MSE
         mse = np.mean((orig_arr - enh_arr) ** 2)
-        if mse == 0:
-            return float('inf')
+        if mse == 0 or mse < 0.001:
+            # Images are identical or nearly identical - PSNR is too high to calculate meaningfully
+            return None
 
         max_pixel = 255.0
         psnr = 20 * np.log10(max_pixel / np.sqrt(mse))
+        
+        # Return None if result is NaN or inf to avoid JSON serialization issues
+        if not np.isfinite(psnr):
+            return None
+        
         return float(round(psnr, 2))
     except Exception as e:
         logger.error(f"PSNR calculation failed: {e}")
