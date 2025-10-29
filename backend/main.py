@@ -186,10 +186,10 @@ def enhance_with_huggingface(image_bytes):
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token}"
 
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            logger.info(f"HF API attempt {attempt+1}/3...")
-            response = requests.post(api_url, data=image_bytes, headers=headers, timeout=40)
+            logger.info(f"HF API attempt {attempt+1}/2...")
+            response = requests.post(api_url, data=image_bytes, headers=headers, timeout=15)
             content_type = response.headers.get("Content-Type", "")
             
             if response.status_code == 200 and content_type.startswith("image"):
@@ -200,15 +200,15 @@ def enhance_with_huggingface(image_bytes):
             logger.warning(f"HF API attempt {attempt+1}: status={response.status_code}")
             hf_debug["attempts"].append({"attempt": attempt + 1, "status": response.status_code, "success": False})
             
-            if attempt < 2:
+            if attempt < 1:
                 import time
-                time.sleep(1)
+                time.sleep(0.5)
         except Exception as e:
             logger.warning(f"HF API attempt {attempt+1} failed: {e}")
             hf_debug["attempts"].append({"attempt": attempt + 1, "error": str(e), "success": False})
-            if attempt < 2:
+            if attempt < 1:
                 import time
-                time.sleep(1)
+                time.sleep(0.5)
 
     logger.info("Falling back to PIL enhancement")
     pil_bytes = enhance_with_pil_fallback(image_bytes)
@@ -245,12 +245,18 @@ async def enhance_image(file: UploadFile = File(...)):
             img = Image.open(io.BytesIO(contents))
             img = img.convert('RGB')
             logger.info(f"Processing image: {img.size}")
+            
+            # Resize large images for faster processing
+            MAX_WIDTH, MAX_HEIGHT = 2000, 2000
+            if img.width > MAX_WIDTH or img.height > MAX_HEIGHT:
+                img.thumbnail((MAX_WIDTH, MAX_HEIGHT), Image.Resampling.LANCZOS)
+                logger.info(f"Resized to: {img.size}")
         except Exception as e:
             logger.error(f"Failed to open image: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
         png_buffer = io.BytesIO()
-        img.save(png_buffer, format='PNG')
+        img.save(png_buffer, format='JPEG', quality=90)
         png_bytes = png_buffer.getvalue()
 
         try:
